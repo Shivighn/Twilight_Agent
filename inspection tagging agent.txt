@@ -1,0 +1,886 @@
+# Fleet Issue Auto-Assignment & WhatsApp Escalation Agent
+
+Build an automated agent that runs **every day at 10:00 AM IST** and manages issue assignment + WhatsApp notifications for fleet managers.
+
+## 1. Objective
+
+Every morning, the agent should:
+
+1. Check the `issues` table for newly triggered/open issues.
+2. For every issue having a `vehicle_number`, determine which Fleet Manager (FM) is responsible for that vehicle.
+3. Determine the FM by looking at the vehicle's trips from the **last 10 days** in the `trips` table.
+4. Get the `fleet_manager_id` mapped to those `service_id`s from the `services_incharge` table.
+5. Assign the issue to the appropriate Fleet Manager.
+6. Send a WhatsApp group message containing all issues assigned to each FM.
+7. Maintain a notification/history table so the same issue is not repeatedly treated as a first-time assignment.
+8. Escalate issues if their status remains unchanged:
+
+   * **First notification:** tag assigned Fleet Manager.
+   * **After 2 days unchanged:** tag Uday.
+   * **After 5 days unchanged:** tag Uday + Siva + Anil.
+9. Use the **existing WhatsApp connection/session** that is already running. Do NOT create a new WhatsApp connection or authentication flow.
+
+---
+
+# 2. Existing Tables
+
+### `issues`
+
+Relevant fields:
+
+```text
+id
+issue_number
+vehicle_number
+summary
+status
+priority_id
+reported_at
+assignee_id
+resolved_at
+closed_at
+...
+```
+
+Example:
+
+```json
+{
+  "issue_number": 367,
+  "vehicle_number": "TG13T1986",
+  "summary": "Driver Complaints: Hand wash broken Entry door issue",
+  "status": "Closed",
+  "reported_at": "2026-03-13 02:43:42+00",
+  "assignee_id": null
+}
+```
+
+### `trips`
+
+Relevant fields:
+
+```text
+trip_id
+service_id
+vehicle_number
+trip_status
+departure_datetime
+arrival_datetime
+...
+```
+
+Example:
+
+```json
+{
+  "trip_id": "1863_20260809",
+  "service_id": "1863",
+  "vehicle_number": "TG13T3398",
+  "trip_status": "Completed",
+  "departure_datetime": "2026-08-09 17:15:00+00",
+  "arrival_datetime": "2026-08-10 02:05:00+00"
+}
+```
+
+### `services_incharge`
+
+Relevant fields:
+
+```text
+service_id
+parking_incharge_id
+fleet_manager_id
+```
+
+Examples:
+
+```json
+{
+  "service_id": "1473",
+  "parking_incharge_id": "raju_vadla",
+  "fleet_manager_id": "venkyfi"
+}
+```
+
+```json
+{
+  "service_id": "1046",
+  "parking_incharge_id": "ram_charan",
+  "fleet_manager_id": "anudeep_mukkoti"
+}
+```
+
+---
+
+# 3. Determine Fleet Manager
+
+For every eligible issue:
+
+### Step 1 — Get vehicle
+
+Use:
+
+```text
+issues.vehicle_number
+```
+
+Example:
+
+```text
+TG13T3398
+```
+
+### Step 2 — Search trips
+
+Look in `trips` for that vehicle over the **previous 10 calendar days** from the agent execution date.
+
+Use the vehicle number consistently. The system may contain both:
+
+```text
+vehicle_number
+intrcity_vehicle_no
+```
+
+Prefer `vehicle_number`, but make the implementation robust enough to handle the actual existing schema/data.
+
+Only consider relevant trips, preferably trips with valid service IDs.
+
+### Step 3 — Identify the most relevant service
+
+If the vehicle has multiple trips/services during the last 10 days:
+
+* Prefer the **most recent trip**.
+* Sort by `departure_datetime DESC`.
+* Use that trip's `service_id`.
+
+Example:
+
+```text
+Vehicle: TG13T3398
+
+Latest trip:
+service_id = 1863
+departure_datetime = 2026-08-09 17:15 UTC
+```
+
+### Step 4 — Resolve FM
+
+Query:
+
+```text
+services_incharge
+WHERE service_id = trip.service_id
+```
+
+Example:
+
+```text
+service_id = 1863
+fleet_manager_id = venkyfi
+```
+
+The mapping must be data-driven. Do not hardcode vehicle → FM mappings.
+
+---
+
+# 4. Important Assignment Rules
+
+Only process issues that require action.
+
+Do NOT process:
+
+* Closed issues
+* Resolved issues
+* Issues that are already fully escalated/handled
+* Issues that cannot be mapped to an FM unless they are explicitly placed into an "unmapped issues" handling flow
+
+The exact definition of active/open status should be configurable.
+
+For a new eligible issue:
+
+```text
+issues.assignee_id = Fleet Manager's user/staff ID
+```
+
+Do not overwrite an existing manual assignee unless explicitly configured to do so.
+
+If an issue already has an assignee, preserve it unless the assignment is specifically owned by this automation.
+
+---
+
+# 5. Notification Tracking
+
+Create a dedicated table, for example:
+
+```text
+fleet_issue_notifications
+```
+
+Suggested schema:
+
+```sql
+id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+issue_id UUID NOT NULL,
+issue_number INTEGER NOT NULL,
+
+vehicle_number TEXT,
+
+fleet_manager_id TEXT,
+
+first_detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+last_status TEXT,
+
+last_status_changed_at TIMESTAMPTZ,
+
+fm_notified_at TIMESTAMPTZ,
+
+uday_notified_at TIMESTAMPTZ,
+
+senior_escalation_notified_at TIMESTAMPTZ,
+
+last_notification_type TEXT,
+
+last_notification_at TIMESTAMPTZ,
+
+notification_count INTEGER DEFAULT 0,
+
+created_at TIMESTAMPTZ DEFAULT now(),
+updated_at TIMESTAMPTZ DEFAULT now()
+```
+
+Add a unique constraint on:
+
+```text
+issue_id
+```
+
+The table is required to make the agent **idempotent**.
+
+Running the agent twice must not result in duplicate first-time notifications.
+
+---
+
+# 6. Status Tracking
+
+The escalation timer is based on the issue remaining in the **same status**.
+
+Example:
+
+```text
+Day 0:
+Issue status = Open
+→ Notify FM
+```
+
+If status remains:
+
+```text
+Open
+```
+
+then:
+
+```text
+Day 2:
+→ Notify Uday
+```
+
+If it still remains:
+
+```text
+Open
+```
+
+then:
+
+```text
+Day 5:
+→ Notify Uday + Siva + Anil
+```
+
+### Important
+
+Do NOT calculate escalation simply from `reported_at`.
+
+Calculate it from the time the issue entered/was last confirmed in its current status.
+
+If the status changes:
+
+```text
+Open → In Progress
+```
+
+reset the escalation timer for that status.
+
+Example:
+
+```text
+Day 0:
+Open → FM notified
+
+Day 1:
+Open
+
+Day 2:
+In Progress
+→ reset escalation timer
+
+Day 4:
+In Progress
+
+Day 6:
+In Progress
+→ Uday notification based on 2 days of unchanged In Progress status
+```
+
+If possible, maintain a status history table:
+
+```text
+fleet_issue_status_history
+```
+
+with:
+
+```text
+issue_id
+status
+status_started_at
+created_at
+```
+
+If an existing issue-status-history mechanism already exists, reuse it instead of creating another table.
+
+---
+
+# 7. First-Time FM Notification
+
+When an issue is first detected and successfully mapped to an FM:
+
+1. Assign it to the FM.
+2. Record the assignment/notification in the tracking table.
+3. Include it in the FM's WhatsApp message.
+
+There are currently two Fleet Managers:
+
+```text
+Anudeep
+Venky
+```
+
+The actual WhatsApp identifiers/group mentions should come from configuration, not be hardcoded throughout the code.
+
+---
+
+# 8. WhatsApp Message
+
+Use the **existing WhatsApp connection** that is already running.
+
+Do NOT:
+
+* create another WhatsApp connection
+* create a new session
+* ask for QR authentication again
+* create a new WhatsApp account
+* introduce a separate WhatsApp service
+
+The agent should call/reuse the existing WhatsApp integration/API/client.
+
+The daily process should generate **one grouped message per FM**.
+
+Example:
+
+### Message 1
+
+```text
+Issues assigned to Anudeep:
+
+7896 - Driver complaint regarding AC
+2915 - Puncture / tyre issue
+3398 - Vehicle maintenance issue
+```
+
+### Message 2
+
+```text
+Issues assigned to Venky:
+
+3397 - Brake issue
+2615 - Driver complaint
+1473 - Cleaning issue
+```
+
+The actual format can be slightly improved for readability, but keep it concise.
+
+Use WhatsApp mentions/tags if the existing connection supports them.
+
+---
+
+# 9. Escalation Messages
+
+## Day 2
+
+If the issue's status has remained unchanged for >= 2 days:
+
+Send a WhatsApp escalation tagging Uday.
+
+Example:
+
+```text
+⚠️ Issue Escalation
+
+Issue 7896 - Driver complaint regarding AC
+Vehicle: TG13T3398
+Status: Open
+
+This issue has remained unchanged for 2 days.
+
+@Uday
+```
+
+Do not send this escalation more than once for the same issue/status period.
+
+Record:
+
+```text
+uday_notified_at
+```
+
+---
+
+# 10. Day 5 Escalation
+
+If the issue has remained in the same status for >= 5 days:
+
+Send:
+
+```text
+🚨 Issue Escalation
+
+Issue 7896 - Driver complaint regarding AC
+Vehicle: TG13T3398
+Status: Open
+
+This issue has remained unchanged for 5 days.
+
+@Uday @Siva @Anil
+```
+
+Record:
+
+```text
+senior_escalation_notified_at
+```
+
+Do not repeatedly send this notification every day.
+
+---
+
+# 11. Daily Processing Algorithm
+
+Implement approximately this flow:
+
+```text
+START
+  ↓
+Run every day at 10:00 AM IST
+  ↓
+Fetch active/open issues
+  ↓
+For each issue
+  ↓
+Check notification tracking
+  ↓
+Is this a new issue?
+  ├── YES
+  │    ↓
+  │   Find vehicle's trips from last 10 days
+  │    ↓
+  │   Find most recent relevant trip
+  │    ↓
+  │   Get service_id
+  │    ↓
+  │   Find fleet_manager_id from services_incharge
+  │    ↓
+  │   Assign issue to FM
+  │    ↓
+  │   Track notification
+  │
+  └── NO
+       ↓
+      Compare current status with tracked status
+       ↓
+      Status changed?
+       ├── YES → Reset escalation timer
+       └── NO
+            ↓
+           Check unchanged duration
+            ↓
+           >= 5 days → Uday + Siva + Anil
+            ↓
+           >= 2 days → Uday
+            ↓
+           Otherwise → nothing
+
+  ↓
+Group newly assigned issues by FM
+  ↓
+Send WhatsApp message for Anudeep
+  ↓
+Send WhatsApp message for Venky
+  ↓
+Store WhatsApp notification results
+  ↓
+END
+```
+
+---
+
+# 12. Handling Multiple Trips
+
+A vehicle may have multiple trips within 10 days.
+
+Use:
+
+```sql
+ORDER BY departure_datetime DESC
+LIMIT 1
+```
+
+to determine the most recent service responsible for the vehicle.
+
+However, design the code so this rule can later be changed to:
+
+* majority service
+* latest completed trip
+* latest active trip
+* service frequency
+
+without rewriting the entire agent.
+
+---
+
+# 13. Unmapped Issues
+
+If no trip exists for a vehicle in the last 10 days:
+
+Do NOT randomly assign the issue.
+
+Record it as:
+
+```text
+assignment_status = 'unmapped'
+```
+
+and log the reason:
+
+```text
+No trip found for vehicle in last 10 days
+```
+
+Similarly, if a trip exists but `services_incharge` has no FM mapping:
+
+```text
+assignment_status = 'unmapped'
+reason = 'No fleet manager mapping for service'
+```
+
+Create a separate admin/debug notification or log for these cases.
+
+---
+
+# 14. Idempotency
+
+This is critical.
+
+If the agent runs twice:
+
+```text
+Issue 7896
+```
+
+must NOT result in:
+
+```text
+FM notified
+FM notified
+FM notified
+```
+
+Instead:
+
+```text
+First run → notification sent
+Second run → already notified → skip
+```
+
+The same applies to:
+
+* Uday escalation
+* Uday + Siva + Anil escalation
+
+Each escalation level should be sent only once per status period.
+
+---
+
+# 15. WhatsApp Failure Handling
+
+If WhatsApp sending fails:
+
+1. Do not mark the notification as successfully sent.
+2. Store the failure.
+3. Log the WhatsApp error.
+4. Retry using a safe retry mechanism.
+5. Do not create a duplicate notification if the first request actually succeeded but the response was lost.
+
+Use a notification state such as:
+
+```text
+pending
+sent
+failed
+```
+
+with:
+
+```text
+attempt_count
+last_attempt_at
+error_message
+```
+
+---
+
+# 16. Configuration
+
+Keep these configurable through environment variables/configuration:
+
+```text
+AGENT_TIMEZONE=Asia/Kolkata
+AGENT_RUN_TIME=10:00
+
+TRIP_LOOKBACK_DAYS=10
+
+FM_ESCALATION_DAYS=2
+SENIOR_ESCALATION_DAYS=5
+
+ANUDEEP_FM_ID=anudeep_mukkoti
+VENKY_FM_ID=venkyfi
+
+UDAY_WHATSAPP_ID=...
+SIVA_WHATSAPP_ID=...
+ANIL_WHATSAPP_ID=...
+
+WHATSAPP_GROUP_ID=...
+```
+
+Do not hardcode WhatsApp numbers/group IDs in business logic.
+
+---
+
+# 17. Scheduling
+
+Run the agent every day at:
+
+```text
+10:00 AM IST
+```
+
+If using UTC-based cron:
+
+```text
+10:00 AM IST = 04:30 AM UTC
+```
+
+The application should explicitly use:
+
+```text
+Asia/Kolkata
+```
+
+for date/time calculations.
+
+Do not rely on the server's local timezone.
+
+---
+
+# 18. Logging
+
+Every run should create a run log containing:
+
+```text
+run_id
+started_at
+completed_at
+issues_scanned
+new_issues
+issues_assigned
+unmapped_issues
+fm_notifications_sent
+uday_escalations_sent
+senior_escalations_sent
+whatsapp_failures
+```
+
+Example:
+
+```text
+Fleet Issue Agent
+Run: 2026-08-10 10:00 IST
+
+Issues scanned: 42
+New issues: 7
+Assigned: 6
+Unmapped: 1
+
+Anudeep: 3 issues
+Venky: 3 issues
+
+Uday escalations: 2
+Senior escalations: 1
+
+WhatsApp failures: 0
+```
+
+---
+
+# 19. Database Safety
+
+Use transactions wherever appropriate.
+
+For a new issue:
+
+```text
+resolve FM
+→ assign issue
+→ create tracking record
+```
+
+should be atomic.
+
+Use unique constraints/upserts to protect against concurrent executions.
+
+The agent should be safe even if:
+
+* two instances start simultaneously
+* the cron retries
+* WhatsApp temporarily fails
+* the database connection drops
+* the agent crashes halfway through processing
+
+---
+
+# 20. Implementation Preference
+
+Build this as an independent agent/service that interacts with the existing database and existing WhatsApp connection.
+
+Do not duplicate existing WhatsApp infrastructure.
+
+Suggested logical modules:
+
+```text
+issue_agent/
+├── scheduler
+├── issue_fetcher
+├── fm_resolver
+├── issue_assigner
+├── escalation_manager
+├── notification_tracker
+├── whatsapp_client
+├── message_builder
+├── logger
+└── config
+```
+
+Keep database queries and WhatsApp logic separated.
+
+---
+
+# 21. Acceptance Criteria
+
+The implementation is complete only when all of these work:
+
+### New issue
+
+```text
+Issue → Vehicle → Last 10 days trips → Latest service → FM
+```
+
+Then:
+
+```text
+Issue assigned to FM
+↓
+FM WhatsApp message
+↓
+Notification tracked
+```
+
+### Existing unchanged issue
+
+```text
+2 days unchanged
+→ Uday tagged
+```
+
+```text
+5 days unchanged
+→ Uday + Siva + Anil tagged
+```
+
+### Status change
+
+```text
+Open
+↓
+In Progress
+```
+
+must reset the escalation timer.
+
+### Duplicate execution
+
+Running the agent twice must not duplicate WhatsApp messages.
+
+### Missing mapping
+
+No trip/FM mapping must never result in an incorrect assignment.
+
+### WhatsApp
+
+Use the existing active WhatsApp connection. No new connection/session/QR flow.
+
+### Daily execution
+
+Agent runs automatically every day at:
+
+```text
+10:00 AM IST
+```
+
+---
+
+## Final Deliverables
+
+Provide:
+
+1. Database schema/migrations for notification tracking and run logs.
+2. Agent implementation.
+3. SQL queries/RPCs required for issue → vehicle → trip → service → FM resolution.
+4. WhatsApp integration using the **existing connection**.
+5. Daily scheduler configuration.
+6. Retry + idempotency handling.
+7. Logging and monitoring.
+8. Environment/configuration variables.
+9. A test plan covering:
+
+   * new issue
+   * multiple trips
+   * no trip
+   * no FM mapping
+   * status change
+   * 2-day escalation
+   * 5-day escalation
+   * duplicate agent execution
+   * WhatsApp failure
