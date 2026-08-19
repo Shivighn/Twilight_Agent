@@ -3,6 +3,7 @@ require('dotenv').config();
 const { startWhatsApp } = require('./whatsapp/client');
 const { handleMessage } = require('./whatsapp/messageHandler');
 const { cleanupOldData } = require('./utils/storage');
+const { startFleetIssueScheduler } = require('./fleetIssues/scheduler');
 const logger = require('./utils/logger');
 const config = require('./config');
 
@@ -46,6 +47,7 @@ function initWithRetry(delay = 5000) {
 }
 
 initWithRetry();
+startFleetIssueScheduler();
 
 process.on('SIGINT', () => {
   logger.info('Shutting down...');

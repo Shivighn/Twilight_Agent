@@ -187,4 +187,25 @@ async function startWhatsApp(onMessage) {
   return sock;
 }
 
-module.exports = { startWhatsApp };
+// Standalone send, for callers with no inbound message to reply to (e.g. the
+// fleet-issue agent's proactive daily/escalation messages — src/fleetIssues/).
+// Resolves `currentSock` at call time, same as reply()/react() above, so it
+// always uses whatever socket is live right now — this is the ONLY path any
+// feature should use to send WhatsApp messages; nothing may open a second
+// connection. Never throws: a dead/reconnecting socket is a normal, expected
+// state (see the reconnect loop above), not a crash-worthy one.
+async function sendToChat(jid, content) {
+  if (!currentSock) {
+    logger.warn(`[WA] sendToChat: no active WhatsApp connection — message to ${jid} not sent`);
+    return { success: false, error: 'not_connected' };
+  }
+  try {
+    const sent = await currentSock.sendMessage(jid, content);
+    return { success: true, id: sent?.key?.id };
+  } catch (err) {
+    logger.error(`[WA] sendToChat failed: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+}
+
+module.exports = { startWhatsApp, sendToChat };

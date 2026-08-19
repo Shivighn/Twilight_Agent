@@ -25,6 +25,45 @@ const config = {
     level: process.env.LOG_LEVEL || 'info',
     dir: process.env.LOG_DIR || './logs',
   },
+  // Not required via requireEnv(): missing/blank here must not crash the
+  // whole gateway (WhatsApp inbound + petty-cash pipeline) — only the
+  // fleet-issue feature depends on it, and it checks for itself at run time.
+  supabase: {
+    url: process.env.SUPABASE_URL || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  },
+  // Fleet Issue Auto-Assignment & WhatsApp Escalation Agent — see
+  // "inspection tagging agent.txt" (repo root) for the spec this implements.
+  // Off by default: a bad/incomplete config here must never start sending
+  // real WhatsApp messages until someone deliberately turns it on.
+  fleetIssues: {
+    enabled: (process.env.FLEET_ISSUE_AGENT_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: process.env.AGENT_TIMEZONE || 'Asia/Kolkata',
+    runTime: process.env.AGENT_RUN_TIME || '10:00', // HH:mm, interpreted in `timezone`
+    tripLookbackDays: parseInt(process.env.TRIP_LOOKBACK_DAYS || '10', 10),
+    fmEscalationDays: parseInt(process.env.FM_ESCALATION_DAYS || '2', 10),
+    seniorEscalationDays: parseInt(process.env.SENIOR_ESCALATION_DAYS || '5', 10),
+    // Which issues.status values are eligible for processing at all.
+    openStatuses: (process.env.FLEET_ISSUE_OPEN_STATUSES || 'Open,In Progress,Reopened')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    fleetManagers: {
+      anudeep: process.env.ANUDEEP_FM_ID || '',
+      venky: process.env.VENKY_FM_ID || '',
+    },
+    // Plain display names for now — NOT Baileys mention JIDs. Swap these for
+    // real WhatsApp IDs later and wire them into messageBuilder.js's
+    // `mentions` array; until then messages just print the name as text.
+    escalationContacts: {
+      uday: process.env.UDAY_WHATSAPP_ID || 'Uday',
+      siva: process.env.SIVA_WHATSAPP_ID || 'Siva',
+      anil: process.env.ANIL_WHATSAPP_ID || 'Anil',
+    },
+    // Target chat JID for FM-assignment + escalation messages. Blank = agent
+    // logs a warning and skips sending (never guesses a chat to post into).
+    whatsappGroupId: process.env.WHATSAPP_GROUP_ID || '',
+  },
 };
 
 module.exports = config;
