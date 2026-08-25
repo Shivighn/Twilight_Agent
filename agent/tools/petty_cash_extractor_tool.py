@@ -58,15 +58,26 @@ FIELDS:
   - If no account number is visible anywhere, set to null.
 
 "utr_number"
-  - The UTR format depends on the payment type. Match the label AND the format:
-    • UPI / IMPS — label: "UPI Ref No.", "UPI Reference", "UPI Txn ID", "Ref No."
-                   format: exactly 12 numeric digits (e.g. 618010294382)
-    • NEFT        — label: "UTR No.", "UTR"
-                   format: 16 alphanumeric characters, often starts with a bank code (e.g. KKBK0123456789)
-    • RTGS        — label: "UTR No.", "UTR"
-                   format: 22 alphanumeric characters
-  - DO NOT use bank-specific internal transaction IDs (e.g. Kotak txn ID K811..., ICICI txn ID NB...) — these are NOT UTRs.
-  - If no matching UTR is found, set to null.
+  - Extract the transaction reference / UTR number shown on the payment receipt.
+  - For UPI / IMPS, accept ALL of these labels:
+    • "UTR"
+    • "UTR:"
+    • "UPI Ref No."
+    • "UPI Reference"
+    • "UPI Ref"
+    • "UPI Txn ID"
+    • "UPI Transaction ID"
+    • "Ref No."
+    • "Reference No."
+    • "Transaction ID"
+    • "Transaction Reference"
+  - For UPI / IMPS, the reference number is usually exactly 12 numeric digits.
+  - Example: "UTR: 634314528291" → utr_number = "634314528291"
+  - NEFT: accept "UTR", "UTR No.", "UTR Number" followed by a 16-character alphanumeric value.
+  - RTGS: accept "UTR", "UTR No.", "UTR Number" followed by a 22-character alphanumeric value.
+  - Prefer a value explicitly labelled UTR / UPI reference over other transaction IDs.
+  - DO NOT use bank-specific internal transaction IDs unless they are explicitly labelled as UTR/reference.
+  - If no valid UTR/reference number is visible, set to null.
 
 "date"
   - Transaction date in YYYY-MM-DD format.
