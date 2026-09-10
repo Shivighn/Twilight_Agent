@@ -208,4 +208,20 @@ async function sendToChat(jid, content) {
   }
 }
 
-module.exports = { startWhatsApp, sendToChat };
+// Resolve a group's JID from its display name (subject) — for outbound-only
+// sends where only a human-readable name is configured (WHATSAPP_GROUP_ID),
+// with no inbound message to read a JID off of. Case-insensitive substring
+// match, same convention as messageHandler.js's isMonitored(). Callers
+// should cache the result: this hits the WhatsApp API every call.
+async function resolveGroupJidByName(name) {
+  if (!currentSock) return null;
+  const groups = await currentSock.groupFetchAllParticipating();
+  const target = name.trim().toLowerCase();
+  for (const [jid, meta] of Object.entries(groups)) {
+    const subject = (meta.subject || '').toLowerCase();
+    if (subject === target || subject.includes(target)) return jid;
+  }
+  return null;
+}
+
+module.exports = { startWhatsApp, sendToChat, resolveGroupJidByName };

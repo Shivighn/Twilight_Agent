@@ -30,6 +30,15 @@ async function runOnce() {
       toNotifyByFm.get(fleetManagerId).push({ issue, priorCount });
     };
 
+    // 'uday' | 'senior' -> [{ issue, daysUnchanged, priorCount }] — one
+    // grouped WhatsApp message per escalation level per run (not one per
+    // issue), covering every issue/vehicle that hit that level this run.
+    const toEscalateByLevel = new Map();
+    const queueEscalation = (level, issue, daysUnchanged, priorCount) => {
+      if (!toEscalateByLevel.has(level)) toEscalateByLevel.set(level, []);
+      toEscalateByLevel.get(level).push({ issue, daysUnchanged, priorCount });
+    };
+
     for (const issue of issues) {
       const tracking = await getByIssueId(issue.id);
 
@@ -57,39 +66,15 @@ async function runOnce() {
       const { escalate, daysUnchanged } = await checkEscalation(issue, tracking);
       if (!escalate) continue;
 
-      const text = buildEscalationMessage({ level: escalate, issue, daysUnchanged });
-      const result = await sendFleetIssueMessage(text);
-      const now = new Date().toISOString();
-
-      if (result.success) {
-        const patch = {
-          last_notification_type: `${escalate}_escalation`,
-          last_notification_at: now,
-          notification_state: 'sent',
-          last_attempt_at: now,
-          error_message: null,
-          notification_count: (tracking.notification_count || 0) + 1,
-        };
-        patch[escalate === 'senior' ? 'senior_escalation_notified_at' : 'uday_notified_at'] = now;
-        await updateTracking(issue.id, patch);
-        if (escalate === 'senior') stats.seniorEscalationsSent += 1;
-        else stats.udayEscalationsSent += 1;
-      } else {
-        await updateTracking(issue.id, {
-          notification_state: 'failed',
-          last_attempt_at: now,
-          error_message: result.error || 'unknown error',
-        });
-        stats.whatsappFailures += 1;
-      }
+      queueEscalation(escalate, issue, daysUnchanged, tracking.notification_count || 0);
     }
 
     for (const [fleetManagerId, items] of toNotifyByFm) {
-      const text = buildFmAssignmentMessage(
+      const { text, mentions } = buildFmAssignmentMessage(
         fmDisplayName(fleetManagerId),
         items.map((i) => i.issue)
       );
-      const result = await sendFleetIssueMessage(text);
+      const result = await sendFleetIssueMessage({ text, mentions });
       const now = new Date().toISOString();
 
       for (const { issue, priorCount } of items) {
@@ -104,6 +89,36 @@ async function runOnce() {
             notification_count: priorCount + 1,
           });
           stats.fmNotificationsSent += 1;
+        } else {
+          await updateTracking(issue.id, {
+            notification_state: 'failed',
+            last_attempt_at: now,
+            error_message: result.error || 'unknown error',
+          });
+          stats.whatsappFailures += 1;
+        }
+      }
+    }
+
+    for (const [level, escItems] of toEscalateByLevel) {
+      const { text, mentions } = buildEscalationMessage(level, escItems);
+      const result = await sendFleetIssueMessage({ text, mentions });
+      const now = new Date().toISOString();
+
+      for (const { issue, priorCount } of escItems) {
+        if (result.success) {
+          const patch = {
+            last_notification_type: `${level}_escalation`,
+            last_notification_at: now,
+            notification_state: 'sent',
+            last_attempt_at: now,
+            error_message: null,
+            notification_count: priorCount + 1,
+          };
+          patch[level === 'senior' ? 'senior_escalation_notified_at' : 'uday_notified_at'] = now;
+          await updateTracking(issue.id, patch);
+          if (level === 'senior') stats.seniorEscalationsSent += 1;
+          else stats.udayEscalationsSent += 1;
         } else {
           await updateTracking(issue.id, {
             notification_state: 'failed',

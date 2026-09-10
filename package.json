@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "fleet-issues:run": "node scripts/run-fleet-issue-agent-once.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

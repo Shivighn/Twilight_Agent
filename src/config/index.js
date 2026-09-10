@@ -44,7 +44,7 @@ const config = {
     fmEscalationDays: parseInt(process.env.FM_ESCALATION_DAYS || '2', 10),
     seniorEscalationDays: parseInt(process.env.SENIOR_ESCALATION_DAYS || '5', 10),
     // Which issues.status values are eligible for processing at all.
-    openStatuses: (process.env.FLEET_ISSUE_OPEN_STATUSES || 'Open,In Progress,Reopened')
+    openStatuses: (process.env.FLEET_ISSUE_OPEN_STATUSES || 'Open,In_Progress,Reopened')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
