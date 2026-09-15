@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(cd \"c:\\\\Users\\\\Angel\\\\Documents\\\\Intern_Twilight_Agent\" && find / -maxdepth 6 -iname \"last_sent.json\" 2>/dev/null)",
+      "Read(//c//**)"
+    ]
+  }
+}

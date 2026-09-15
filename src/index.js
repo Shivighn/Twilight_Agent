@@ -4,6 +4,7 @@ const { startWhatsApp } = require('./whatsapp/client');
 const { handleMessage } = require('./whatsapp/messageHandler');
 const { cleanupOldData } = require('./utils/storage');
 const { startFleetIssueScheduler } = require('./fleetIssues/scheduler');
+const { startTerminal44Scheduler } = require('./terminal44/scheduler');
 const logger = require('./utils/logger');
 const config = require('./config');
 
@@ -48,6 +49,7 @@ function initWithRetry(delay = 5000) {
 
 initWithRetry();
 startFleetIssueScheduler();
+startTerminal44Scheduler();
 
 process.on('SIGINT', () => {
   logger.info('Shutting down...');

@@ -64,6 +64,20 @@ const config = {
     // logs a warning and skips sending (never guesses a chat to post into).
     whatsappGroupId: process.env.WHATSAPP_GROUP_ID || '',
   },
+  // Terminal 44 daily history report — posts yesterday's departed-vehicle
+  // history (Terminal 44 API) as a CSV to WhatsApp every night.
+  // Off by default, same safety rule as fleetIssues above: a bad/incomplete
+  // config here must never start sending real WhatsApp messages until
+  // someone deliberately turns it on.
+  terminal44: {
+    enabled: (process.env.TERMINAL44_REPORT_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: 'Asia/Kolkata',
+    runTime: process.env.TERMINAL44_RUN_TIME || '02:00', // HH:mm, interpreted in `timezone`
+    apiBaseUrl: process.env.TERMINAL44_API_BASE_URL || 'https://be.fleetzen.co.in',
+    // Target WhatsApp group for the CSV document. Blank = agent logs a
+    // warning and skips sending (never guesses a chat to post into).
+    whatsappGroupId: process.env.TERMINAL44_WHATSAPP_GROUP_ID || 'Agent Test',
+  },
 };
 
 module.exports = config;
