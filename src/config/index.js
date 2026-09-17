@@ -78,6 +78,34 @@ const config = {
     // warning and skips sending (never guesses a chat to post into).
     whatsappGroupId: process.env.TERMINAL44_WHATSAPP_GROUP_ID || 'Agent Test',
   },
+  // MG Fuel Savings daily status post. Off by default, same safety rule as
+  // fleetIssues/terminal44 above.
+  mgFuelSavings: {
+    enabled: (process.env.MG_FUEL_SAVINGS_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: 'Asia/Kolkata',
+    runTime: process.env.MG_FUEL_SAVINGS_RUN_TIME || '11:00', // HH:mm, interpreted in `timezone`
+    apiBaseUrl: process.env.MG_FUEL_SAVINGS_API_BASE_URL || 'https://be.fleetzen.co.in',
+    // Dedicated automation account for be.fleetzen.co.in — never hardcoded;
+    // real values live only in .env (gitignored).
+    credentials: {
+      email: process.env.MG_FUEL_SAVINGS_EMAIL || '',
+      password: process.env.MG_FUEL_SAVINGS_PASSWORD || '',
+    },
+    // Target WhatsApp group for the daily status message. Blank = agent
+    // logs a warning and skips sending (never guesses a chat to post into).
+    whatsappGroupId: process.env.MG_FUEL_SAVINGS_WHATSAPP_GROUP_ID || 'Agent Test',
+    // Real phone numbers (country code + number, no "+", spaces or dashes)
+    // — messageBuilder.js turns these into real WhatsApp @mentions on both
+    // messages. Anil/Uday reuse the same contacts already configured for
+    // fleetIssues (ANIL_WHATSAPP_ID / UDAY_WHATSAPP_ID) — same people, no
+    // need for duplicate vars.
+    contacts: {
+      anil: process.env.ANIL_WHATSAPP_ID || 'Anil',
+      uday: process.env.UDAY_WHATSAPP_ID || 'Uday',
+      balaji: process.env.BALAJI_WHATSAPP_ID || 'Balaji',
+      likhith: process.env.LIKHITH_WHATSAPP_ID || 'Likhith',
+    },
+  },
 };
 
 module.exports = config;
