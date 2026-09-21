@@ -83,7 +83,10 @@ const config = {
   mgFuelSavings: {
     enabled: (process.env.MG_FUEL_SAVINGS_ENABLED || 'false').toLowerCase() === 'true',
     timezone: 'Asia/Kolkata',
-    runTime: process.env.MG_FUEL_SAVINGS_RUN_TIME || '11:00', // HH:mm, interpreted in `timezone`
+    runTime: process.env.MG_FUEL_SAVINGS_RUN_TIME || '10:00', // HH:mm, interpreted in `timezone`
+    // Only actually sends if the 10 AM run found >=1 anomaly (see
+    // mgFuelSavings/index.js runAfternoon / morningResultStore.js).
+    afternoonRunTime: process.env.MG_FUEL_SAVINGS_AFTERNOON_RUN_TIME || '16:00',
     apiBaseUrl: process.env.MG_FUEL_SAVINGS_API_BASE_URL || 'https://be.fleetzen.co.in',
     // Dedicated automation account for be.fleetzen.co.in — never hardcoded;
     // real values live only in .env (gitignored).

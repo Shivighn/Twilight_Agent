@@ -37,4 +37,17 @@ function getCurrentMonthRangeIST(now = new Date()) {
   };
 }
 
-module.exports = { getCurrentMonthRangeIST };
+/** "YYYY-MM-DD" for the current IST calendar date — used to key the persisted 10 AM result. */
+function getTodayISTDateString(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+module.exports = { getCurrentMonthRangeIST, getTodayISTDateString };

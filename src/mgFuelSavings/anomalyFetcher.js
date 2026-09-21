@@ -5,19 +5,16 @@ const logger = require('../utils/logger');
 // Business-rule thresholds fixed by spec, not deployment config — not
 // meant to be overridden via env.
 const MIN_NORMAL_MILEAGE = 2.5;
-const MAX_NORMAL_MILEAGE = 4.7;
-const PENDING_MILEAGE_REASON = 'PENDING_MILEAGE';
+const MAX_NORMAL_MILEAGE = 4.6;
 
 /**
- * A trip counts as an anomaly if EITHER:
- *   - reason === 'PENDING_MILEAGE', or
- *   - calculated_mileage is present (not null/undefined) and outside
- *     [2.5, 4.7].
+ * A trip counts as an anomaly ONLY when calculated_mileage is present and
+ * outside [2.5, 4.6] — 2.5 <= mileage <= 4.6 is never an anomaly, and no
+ * other field (e.g. `reason`) factors in at all, regardless of its value.
  * This is NOT the same as "every row the endpoint returns" — it returns
  * every trip in range, most of which are perfectly normal.
  */
 function isAnomaly(row) {
-  if (row.reason === PENDING_MILEAGE_REASON) return true;
   const mileage = row.calculated_mileage;
   if (mileage === null || mileage === undefined) return false;
   return mileage < MIN_NORMAL_MILEAGE || mileage > MAX_NORMAL_MILEAGE;
