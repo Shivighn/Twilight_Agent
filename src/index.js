@@ -6,6 +6,7 @@ const { cleanupOldData } = require('./utils/storage');
 const { startFleetIssueScheduler } = require('./fleetIssues/scheduler');
 const { startTerminal44Scheduler } = require('./terminal44/scheduler');
 const { startMgFuelSavingsScheduler } = require('./mgFuelSavings/scheduler');
+const { startInvestorReportScheduler } = require('./investorReport/scheduler');
 const logger = require('./utils/logger');
 const config = require('./config');
 
@@ -52,6 +53,7 @@ initWithRetry();
 startFleetIssueScheduler();
 startTerminal44Scheduler();
 startMgFuelSavingsScheduler();
+startInvestorReportScheduler();
 
 process.on('SIGINT', () => {
   logger.info('Shutting down...');

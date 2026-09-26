@@ -10,7 +10,8 @@
     "fleet-issues:run": "node scripts/run-fleet-issue-agent-once.js",
     "terminal44:run": "node scripts/run-terminal44-report-once.js",
     "mg-fuel-savings:run": "node scripts/run-mg-fuel-savings-once.js",
-    "mg-fuel-savings:run:afternoon": "node scripts/run-mg-fuel-savings-once.js afternoon"
+    "mg-fuel-savings:run:afternoon": "node scripts/run-mg-fuel-savings-once.js afternoon",
+    "investor-report:run": "node scripts/run-investor-report-once.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

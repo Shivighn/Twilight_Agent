@@ -105,9 +105,23 @@ const config = {
     contacts: {
       anil: process.env.ANIL_WHATSAPP_ID || 'Anil',
       uday: process.env.UDAY_WHATSAPP_ID || 'Uday',
+      siva: process.env.SIVA_WHATSAPP_ID || 'Siva',
       balaji: process.env.BALAJI_WHATSAPP_ID || 'Balaji',
       likhith: process.env.LIKHITH_WHATSAPP_ID || 'Likhith',
     },
+  },
+  // Weekly investor-investments report — calls a wrapping SQL function
+  // (public.weekly_investor_report(), applied directly in the
+  // InvestorProject Supabase — see migration "weekly_investor_report_fn")
+  // that runs the exact query as given, via RPC. Different Supabase
+  // project from `supabase` above, hence its own URL/key.
+  investorReport: {
+    enabled: (process.env.INVESTOR_REPORT_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: 'Asia/Kolkata',
+    runTime: process.env.INVESTOR_REPORT_RUN_TIME || '09:00', // HH:mm Monday, interpreted in `timezone`
+    supabaseUrl: process.env.INVESTOR_SUPABASE_URL || '',
+    supabaseServiceRoleKey: process.env.INVESTOR_SUPABASE_SERVICE_ROLE_KEY || '',
+    whatsappGroupId: process.env.INVESTOR_REPORT_WHATSAPP_GROUP_ID || 'Agent Test',
   },
 };
 
