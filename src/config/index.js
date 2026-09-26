@@ -123,6 +123,28 @@ const config = {
     supabaseServiceRoleKey: process.env.INVESTOR_SUPABASE_SERVICE_ROLE_KEY || '',
     whatsappGroupId: process.env.INVESTOR_REPORT_WHATSAPP_GROUP_ID || 'Agent Test',
   },
+  // T44 daily sales post — Petpooja billing dashboard has no API-key auth
+  // for this account, so this reuses a real logged-in browser session
+  // cookie (OTP login, no password available) pasted into PETPOOJA_COOKIE.
+  // No way to auto-refresh it — re-paste when it expires.
+  t44Sales: {
+    enabled: (process.env.T44_SALES_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: 'Asia/Kolkata',
+    runTime: process.env.T44_SALES_RUN_TIME || '09:00', // HH:mm, interpreted in `timezone`
+    cookie: process.env.PETPOOJA_COOKIE || '',
+    restaurantIds: process.env.PETPOOJA_RESTAURANT_IDS || '457540,462523',
+    whatsappGroupId: process.env.T44_SALES_WHATSAPP_GROUP_ID || 'Agent Test',
+  },
+  // T44 bus-bay report — calls a wrapping SQL function
+  // (public.t44_bus_bay_report(p_from, p_to)) via RPC on the SAME FleetZen
+  // Supabase project as `supabase` above (that's where terminal_* live) —
+  // reuses supabase.url/serviceRoleKey directly, no separate credentials.
+  t44Buses: {
+    enabled: (process.env.T44_BUSES_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: 'Asia/Kolkata',
+    runTime: process.env.T44_BUSES_RUN_TIME || '05:00', // HH:mm, interpreted in `timezone`
+    whatsappGroupId: process.env.T44_BUSES_WHATSAPP_GROUP_ID || 'Agent Test',
+  },
 };
 
 module.exports = config;

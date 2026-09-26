@@ -48,11 +48,11 @@ async function runOnce() {
   );
   logger.info(`[InvestorReport] ${rows.length} investment(s) this week`);
 
-  const headers = ['Investor Name', 'Pool Name', 'Invested Amount', 'Investment Date'];
+  const headers = ['Investment Date', 'Invested Amount', 'Investor Name', 'Pool Name'];
   const lines = [headers.map(csvField).join(',')];
   for (const r of rows) {
     lines.push(
-      [r.investor_name, r.pool_name, r.invested_amount, r.investment_date].map(csvField).join(',')
+      [r.investment_date, r.invested_amount, r.investor_name, r.pool_name].map(csvField).join(',')
     );
   }
   const csv = lines.join('\n');

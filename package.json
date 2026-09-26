@@ -11,7 +11,9 @@
     "terminal44:run": "node scripts/run-terminal44-report-once.js",
     "mg-fuel-savings:run": "node scripts/run-mg-fuel-savings-once.js",
     "mg-fuel-savings:run:afternoon": "node scripts/run-mg-fuel-savings-once.js afternoon",
-    "investor-report:run": "node scripts/run-investor-report-once.js"
+    "investor-report:run": "node scripts/run-investor-report-once.js",
+    "t44-sales:run": "node scripts/run-t44-sales-once.js",
+    "t44-buses:run": "node scripts/run-t44-buses-once.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

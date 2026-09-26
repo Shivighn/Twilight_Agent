@@ -7,6 +7,8 @@ const { startFleetIssueScheduler } = require('./fleetIssues/scheduler');
 const { startTerminal44Scheduler } = require('./terminal44/scheduler');
 const { startMgFuelSavingsScheduler } = require('./mgFuelSavings/scheduler');
 const { startInvestorReportScheduler } = require('./investorReport/scheduler');
+const { startT44SalesScheduler } = require('./t44Sales/scheduler');
+const { startT44BusesScheduler } = require('./t44Buses/scheduler');
 const logger = require('./utils/logger');
 const config = require('./config');
 
@@ -54,6 +56,8 @@ startFleetIssueScheduler();
 startTerminal44Scheduler();
 startMgFuelSavingsScheduler();
 startInvestorReportScheduler();
+startT44SalesScheduler();
+startT44BusesScheduler();
 
 process.on('SIGINT', () => {
   logger.info('Shutting down...');
