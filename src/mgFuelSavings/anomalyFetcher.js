@@ -5,11 +5,11 @@ const logger = require('../utils/logger');
 // Business-rule thresholds fixed by spec, not deployment config — not
 // meant to be overridden via env.
 const MIN_NORMAL_MILEAGE = 2.5;
-const MAX_NORMAL_MILEAGE = 4.6;
+const MAX_NORMAL_MILEAGE = 4.8;
 
 /**
  * A trip counts as an anomaly ONLY when calculated_mileage is present and
- * outside [2.5, 4.6] — 2.5 <= mileage <= 4.6 is never an anomaly, and no
+ * outside [2.5, 4.8] — 2.5 <= mileage <= 4.8 is never an anomaly, and no
  * other field (e.g. `reason`) factors in at all, regardless of its value.
  * This is NOT the same as "every row the endpoint returns" — it returns
  * every trip in range, most of which are perfectly normal.

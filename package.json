@@ -9,6 +9,7 @@
     "dev": "nodemon src/index.js",
     "fleet-issues:run": "node scripts/run-fleet-issue-agent-once.js",
     "terminal44:run": "node scripts/run-terminal44-report-once.js",
+    "terminal44-flix:run": "node scripts/run-terminal44-report-once.js flix",
     "mg-fuel-savings:run": "node scripts/run-mg-fuel-savings-once.js",
     "mg-fuel-savings:run:afternoon": "node scripts/run-mg-fuel-savings-once.js afternoon",
     "investor-report:run": "node scripts/run-investor-report-once.js",
@@ -23,6 +24,7 @@
     "node-cron": "^3.0.3",
     "pino": "^9.4.0",
     "qrcode-terminal": "^0.12.0",
+    "sharp": "^0.35.4",
     "winston": "^3.13.0"
   },
   "devDependencies": {

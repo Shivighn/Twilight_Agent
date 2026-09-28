@@ -2,6 +2,7 @@ const axios = require('axios');
 const config = require('../config');
 const logger = require('../utils/logger');
 const { sendToChat, resolveGroupJidByName } = require('../whatsapp/client');
+const { buildTableImage } = require('../utils/tableImage');
 
 // RFC 4180: quote a field if it contains a comma, quote, or newline.
 function csvField(value) {
@@ -63,6 +64,14 @@ async function runOnce() {
   const jid = await resolveGroupJidByName(whatsappGroupId);
   if (!jid) throw new Error(`[InvestorReport] Could not find WhatsApp group "${whatsappGroupId}"`);
 
+  // Nothing to attach: say so in words instead of sending a header-only CSV.
+  if (rows.length === 0) {
+    const empty = await sendToChat(jid, { text: `We had 0 investments from ${lastWeekRangeIST()}` });
+    if (!empty.success) throw new Error(`[InvestorReport] Send failed: ${empty.error}`);
+    logger.info('[InvestorReport] No investments last week — sent the zero-investments message');
+    return { rowCount: 0 };
+  }
+
   const fileName = `weekly_investor_report_${new Date().toISOString().slice(0, 10)}.csv`;
   const result = await sendToChat(jid, {
     document: Buffer.from(csv, 'utf8'),
@@ -71,8 +80,18 @@ async function runOnce() {
     caption: `Weekly Investment Report from ${lastWeekRangeIST()}`,
   });
   if (!result.success) throw new Error(`[InvestorReport] Send failed: ${result.error}`);
+  logger.info('[InvestorReport] CSV sent');
 
-  logger.info('[InvestorReport] Sent');
+  // Snapshot image so people who won't open the CSV can still see the data
+  // at a glance. Sent as a second message, same group — CSV stays as-is.
+  const imageBuffer = await buildTableImage(
+    headers,
+    rows.map((r) => [r.investment_date, r.invested_amount, r.investor_name, r.pool_name])
+  );
+  const imageResult = await sendToChat(jid, { image: imageBuffer });
+  if (!imageResult.success) throw new Error(`[InvestorReport] Snapshot image send failed: ${imageResult.error}`);
+  logger.info('[InvestorReport] Snapshot image sent');
+
   return { rowCount: rows.length };
 }
 

@@ -77,6 +77,14 @@ const config = {
     // Target WhatsApp group for the CSV document. Blank = agent logs a
     // warning and skips sending (never guesses a chat to post into).
     whatsappGroupId: process.env.TERMINAL44_WHATSAPP_GROUP_ID || 'Agent Test',
+    // Same report, filtered to the Flix operator instead of IntrCity, sent
+    // to its own group with a snapshot image of the CSV. Own enable flag so
+    // it can be switched on/off independently. Off by default.
+    flix: {
+      enabled: (process.env.TERMINAL44_FLIX_ENABLED || 'false').toLowerCase() === 'true',
+      runTime: process.env.TERMINAL44_FLIX_RUN_TIME || '02:35', // HH:mm, interpreted in `timezone`
+      whatsappGroupId: process.env.TERMINAL44_FLIX_WHATSAPP_GROUP_ID || 'Agent Test',
+    },
   },
   // MG Fuel Savings daily status post. Off by default, same safety rule as
   // fleetIssues/terminal44 above.
@@ -118,7 +126,7 @@ const config = {
   investorReport: {
     enabled: (process.env.INVESTOR_REPORT_ENABLED || 'false').toLowerCase() === 'true',
     timezone: 'Asia/Kolkata',
-    runTime: process.env.INVESTOR_REPORT_RUN_TIME || '09:00', // HH:mm Monday, interpreted in `timezone`
+    runTime: process.env.INVESTOR_REPORT_RUN_TIME || '14:00', // HH:mm Monday, interpreted in `timezone`
     supabaseUrl: process.env.INVESTOR_SUPABASE_URL || '',
     supabaseServiceRoleKey: process.env.INVESTOR_SUPABASE_SERVICE_ROLE_KEY || '',
     whatsappGroupId: process.env.INVESTOR_REPORT_WHATSAPP_GROUP_ID || 'Agent Test',

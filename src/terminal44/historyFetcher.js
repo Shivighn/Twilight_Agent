@@ -9,14 +9,14 @@ const logger = require('../utils/logger');
 const OPERATOR_FILTER = 'intrcity';
 
 /**
- * Fetch yesterday's (IST) Terminal 44 history and filter to departed rows
- * for the IntrCity SmartBus operator only.
+ * Fetch a day's (IST) Terminal 44 history and filter to departed rows for
+ * one operator (`operatorFilter`, default IntrCity — the original report).
  *
  * `from`/`to` are BOTH set to the same date deliberately (per the API's own
  * contract) — the endpoint already extends a single day's window to 4:00 AM
  * the next calendar day internally, so a 2-day span would double-count.
  */
-async function fetchDepartedHistory(dateStr) {
+async function fetchDepartedHistory(dateStr, operatorFilter = OPERATOR_FILTER) {
   const url = `${config.terminal44.apiBaseUrl}/terminal44/history`;
   logger.info(`[Terminal44] Fetching history for ${dateStr} — GET ${url}?from=${dateStr}&to=${dateStr}`);
 
@@ -38,10 +38,10 @@ async function fetchDepartedHistory(dateStr) {
   }
 
   const departed = data.rows.filter((row) => row.status === 'departed');
-  const filtered = departed.filter((row) => (row.operator_name || '').trim().toLowerCase().includes(OPERATOR_FILTER));
+  const filtered = departed.filter((row) => (row.operator_name || '').trim().toLowerCase().includes(operatorFilter));
   logger.info(
     `[Terminal44] Fetched ${data.rows.length} row(s) for ${dateStr} (from=${data.from}, to=${data.to}) — ` +
-      `${departed.length} departed, ${filtered.length} IntrCity SmartBus`
+      `${departed.length} departed, ${filtered.length} matching "${operatorFilter}"`
   );
 
   return filtered;

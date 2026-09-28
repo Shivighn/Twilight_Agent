@@ -3,7 +3,7 @@ const config = require('../config');
 const logger = require('../utils/logger');
 const { runOnce } = require('./index');
 
-/** "09:00" -> "0 9 * * 1" (every Monday). */
+/** "14:00" -> "0 14 * * 1" (every Monday). */
 function cronExpressionFor(runTime) {
   const [hh, mm] = runTime.split(':').map((n) => parseInt(n, 10));
   return `${mm} ${hh} * * 1`;

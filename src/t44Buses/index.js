@@ -50,6 +50,41 @@ function csvField(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// "8:15 PM" -> 20 (24h). The RPC only returns departure as pre-formatted
+// 12h text, so bucketing has to parse it back — no raw timestamp available.
+function parseHour24(timeStr) {
+  const m = /^(\d{1,2}):\d{2}\s(AM|PM)$/.exec(timeStr || '');
+  if (!m) return null;
+  let h = Number(m[1]) % 12;
+  if (m[2] === 'PM') h += 12;
+  return h;
+}
+
+// 20 -> "8-9 PM"
+function hourRangeLabel(hour24) {
+  const h12 = ((hour24 + 11) % 12) + 1;
+  const next12 = (h12 % 12) + 1;
+  return `${h12}-${next12} PM`;
+}
+
+// ponytail: fixed to the 8-11 PM window as asked, not the whole night —
+// widen WINDOW_HOURS if a fuller breakdown is ever wanted.
+const WINDOW_HOURS = [20, 21, 22];
+
+/** "8-9 PM: 8 buses (2 IntrCity, 2 Flix, 4 Zing)" per hour, joined by newline. Buckets by DEPARTURE time. */
+function buildHourlySummary(rows) {
+  return WINDOW_HOURS.map((hour) => {
+    const inHour = rows.filter((r) => parseHour24(r.departure) === hour);
+    const counts = {};
+    for (const r of inHour) counts[r.operator] = (counts[r.operator] || 0) + 1;
+    const breakdown = Object.entries(counts)
+      .map(([op, c]) => `${c} ${op}`)
+      .join(', ');
+    const busWord = inHour.length === 1 ? 'bus' : 'buses';
+    return `${hourRangeLabel(hour)}: ${inHour.length} ${busWord}${breakdown ? ` (${breakdown})` : ''}`;
+  }).join('\n\n');
+}
+
 /**
  * One daily run: RPC the bus-bay report for yesterday's window, build a
  * CSV, send it with the row count in the caption. `windowOverride` (for
@@ -100,7 +135,7 @@ async function runOnce(windowOverride) {
     document: Buffer.from(csv, 'utf8'),
     fileName,
     mimetype: 'text/csv',
-    caption: `${display}, ${rows.length} buses stopped at T-44`,
+    caption: `${display}, ${rows.length} buses stopped at T-44\n\n${buildHourlySummary(rows)}`,
   });
   if (!result.success) throw new Error(`[T44Buses] Send failed: ${result.error}`);
 

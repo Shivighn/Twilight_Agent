@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const config = require('../config');
 const logger = require('../utils/logger');
-const { runOnce } = require('./index');
+const { runOnce, runFlix } = require('./index');
 
 /** "02:00" -> "0 2 * * *" */
 function cronExpressionFor(runTime) {
@@ -10,33 +10,55 @@ function cronExpressionFor(runTime) {
 }
 
 /**
- * Registers the daily Terminal 44 history report. Explicitly passes
- * `timezone` to node-cron (IANA name, "Asia/Kolkata") rather than relying
- * on the server's local time zone — same reasoning as fleetIssues/scheduler.js.
+ * Registers one daily report. Explicitly passes `timezone` to node-cron
+ * (IANA name, "Asia/Kolkata") rather than relying on the server's local
+ * time zone — same reasoning as fleetIssues/scheduler.js. Each operator's
+ * report is gated by its own enable flag, independently of the others.
  */
-function startTerminal44Scheduler() {
-  if (!config.terminal44.enabled) {
-    logger.info('[Terminal44] Report disabled (set TERMINAL44_REPORT_ENABLED=true to enable) — not scheduling');
+function scheduleReport({ label, enabled, enabledVar, runTime, groupId, groupVar, run }) {
+  if (!enabled) {
+    logger.info(`[Terminal44] ${label} report disabled (set ${enabledVar}=true to enable) — not scheduling`);
     return;
   }
-  if (!config.terminal44.whatsappGroupId) {
+  if (!groupId) {
     logger.warn(
-      '[Terminal44] TERMINAL44_WHATSAPP_GROUP_ID not set — scheduler will still run daily, but every WhatsApp send will be skipped and logged until it is configured'
+      `[Terminal44] ${groupVar} not set — scheduler will still run daily, but every WhatsApp send will be skipped and logged until it is configured`
     );
   }
 
-  const expr = cronExpressionFor(config.terminal44.runTime);
+  const expr = cronExpressionFor(runTime);
   logger.info(
-    `[Terminal44] Scheduling daily run at ${config.terminal44.runTime} (${config.terminal44.timezone}) — cron "${expr}"`
+    `[Terminal44] Scheduling daily ${label} run at ${runTime} (${config.terminal44.timezone}) — cron "${expr}"`
   );
 
   cron.schedule(
     expr,
     () => {
-      runOnce().catch((err) => logger.error(`[Terminal44] Unhandled run error: ${err.message}`, err));
+      run().catch((err) => logger.error(`[Terminal44] Unhandled ${label} run error: ${err.message}`, err));
     },
     { timezone: config.terminal44.timezone }
   );
+}
+
+function startTerminal44Scheduler() {
+  scheduleReport({
+    label: 'IntrCity',
+    enabled: config.terminal44.enabled,
+    enabledVar: 'TERMINAL44_REPORT_ENABLED',
+    runTime: config.terminal44.runTime,
+    groupId: config.terminal44.whatsappGroupId,
+    groupVar: 'TERMINAL44_WHATSAPP_GROUP_ID',
+    run: () => runOnce(),
+  });
+  scheduleReport({
+    label: 'Flix',
+    enabled: config.terminal44.flix.enabled,
+    enabledVar: 'TERMINAL44_FLIX_ENABLED',
+    runTime: config.terminal44.flix.runTime,
+    groupId: config.terminal44.flix.whatsappGroupId,
+    groupVar: 'TERMINAL44_FLIX_WHATSAPP_GROUP_ID',
+    run: () => runFlix(),
+  });
 }
 
 module.exports = { startTerminal44Scheduler };

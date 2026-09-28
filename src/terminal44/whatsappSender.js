@@ -2,25 +2,24 @@ const config = require('../config');
 const { sendToChat, resolveGroupJidByName } = require('../whatsapp/client');
 const logger = require('../utils/logger');
 
-// A real Baileys JID always ends in one of these — anything else in
-// TERMINAL44_WHATSAPP_GROUP_ID is treated as a display name to resolve at
-// send time. Same convention as fleetIssues/whatsappSender.js.
+// A real Baileys JID always ends in one of these — anything else configured
+// as a group is treated as a display name to resolve at send time. Same
+// convention as fleetIssues/whatsappSender.js.
 function looksLikeJid(value) {
   return /@(g\.us|s\.whatsapp\.net)$/.test(value);
 }
 
-// Group JIDs don't change — resolve the configured name once, reuse after.
-let cachedGroupJid = null;
+// Group JIDs don't change — resolve each configured name once, reuse after.
+const cachedGroupJids = new Map();
 
-async function resolveTargetJid() {
-  const configured = config.terminal44.whatsappGroupId;
+async function resolveTargetJid(configured) {
   if (looksLikeJid(configured)) return configured;
-  if (cachedGroupJid) return cachedGroupJid;
+  if (cachedGroupJids.has(configured)) return cachedGroupJids.get(configured);
 
   const jid = await resolveGroupJidByName(configured);
   if (jid) {
-    cachedGroupJid = jid;
-    logger.info(`[Terminal44] Resolved TERMINAL44_WHATSAPP_GROUP_ID "${configured}" -> ${jid}`);
+    cachedGroupJids.set(configured, jid);
+    logger.info(`[Terminal44] Resolved WhatsApp group "${configured}" -> ${jid}`);
   } else {
     logger.warn(
       `[Terminal44] Could not find a WhatsApp group named "${configured}" — is the bot's account a member of it?`
@@ -30,33 +29,40 @@ async function resolveTargetJid() {
 }
 
 /**
- * Send the CSV as a WhatsApp document. Routes through sendToChat() in
- * src/whatsapp/client.js — the SAME already-authenticated Baileys socket
- * every other feature in this repo uses. No new connection, no new session.
+ * Routes through sendToChat() in src/whatsapp/client.js — the SAME
+ * already-authenticated Baileys socket every other feature in this repo
+ * uses. No new connection, no new session.
  */
-
-async function sendCsvDocument(buffer, fileName, caption) {
-  if (!config.terminal44.whatsappGroupId) {
-    const msg = '[Terminal44] TERMINAL44_WHATSAPP_GROUP_ID not configured — skipping send';
-    logger.warn(msg);
+async function sendTo(groupId, content, describe) {
+  if (!groupId) {
+    logger.warn('[Terminal44] WhatsApp group not configured — skipping send');
     return { success: false, error: 'group_not_configured' };
   }
 
-  const jid = await resolveTargetJid();
+  const jid = await resolveTargetJid(groupId);
   if (!jid) return { success: false, error: 'group_not_found' };
 
-  logger.info(`[Terminal44] Sending "${fileName}" (${buffer.length} bytes) to ${jid}`);
-  const result = await sendToChat(jid, {
-    document: buffer,
-    fileName,
-    mimetype: 'text/csv',
-    caption,
-  });
+  logger.info(`[Terminal44] Sending ${describe} to ${jid}`);
+  const result = await sendToChat(jid, content);
 
-  if (result.success) logger.info(`[Terminal44] Sent "${fileName}" — message id ${result.id}`);
-  else logger.error(`[Terminal44] Send failed for "${fileName}": ${result.error}`);
+  if (result.success) logger.info(`[Terminal44] Sent ${describe} — message id ${result.id}`);
+  else logger.error(`[Terminal44] Send failed for ${describe}: ${result.error}`);
 
   return result;
 }
 
-module.exports = { sendCsvDocument };
+/** Send the CSV as a WhatsApp document (`groupId` defaults to the IntrCity report's group). */
+function sendCsvDocument(buffer, fileName, caption, groupId = config.terminal44.whatsappGroupId) {
+  return sendTo(
+    groupId,
+    { document: buffer, fileName, mimetype: 'text/csv', caption },
+    `"${fileName}" (${buffer.length} bytes)`
+  );
+}
+
+/** Send a PNG as a WhatsApp image. */
+function sendImage(buffer, groupId = config.terminal44.whatsappGroupId) {
+  return sendTo(groupId, { image: buffer }, `snapshot image (${buffer.length} bytes)`);
+}
+
+module.exports = { sendCsvDocument, sendImage };

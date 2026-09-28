@@ -37,20 +37,26 @@ function excelTextForce(value) {
   return `="${String(value).replace(/"/g, '""')}"`;
 }
 
-/** Build the CSV string for the given (already departed + IntrCity-filtered) rows. */
+/** Plain cell values for one row, in CSV_HEADERS order — no CSV escaping, no Excel tricks. Shared by the CSV and the snapshot image. */
+function tableRow(row) {
+  return [
+    formatDateDMMMYY(row.scheduled_arrival),
+    formatVehicleNumber(row.bus_number),
+    row.service_name === null || row.service_name === undefined ? '' : String(row.service_name),
+    row.operator_name || '',
+    formatTimeAMPM(row.scheduled_arrival),
+    formatTimeAMPM(row.scheduled_departure),
+  ];
+}
+
+/** Build the CSV string for the given (already departed + operator-filtered) rows. */
 function buildCsv(rows) {
   logger.info(`[Terminal44] Building CSV for ${rows.length} row(s)`);
 
   const lines = [CSV_HEADERS.map(csvField).join(',')];
   for (const row of rows) {
-    const fields = [
-      formatDateDMMMYY(row.scheduled_arrival),
-      formatVehicleNumber(row.bus_number),
-      excelTextForce(row.service_name),
-      row.operator_name || '',
-      formatTimeAMPM(row.scheduled_arrival),
-      formatTimeAMPM(row.scheduled_departure),
-    ];
+    const fields = tableRow(row);
+    fields[2] = excelTextForce(fields[2]); // Service ID: keep leading zeros in Excel
     lines.push(fields.map(csvField).join(','));
   }
 
@@ -59,4 +65,4 @@ function buildCsv(rows) {
   return csv;
 }
 
-module.exports = { buildCsv, formatVehicleNumber, csvField };
+module.exports = { buildCsv, tableRow, CSV_HEADERS, formatVehicleNumber, csvField };
