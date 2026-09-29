@@ -16,7 +16,7 @@ const INTRCITY = {
   groupId: config.terminal44.whatsappGroupId,
   markerName: undefined, // original last_sent.json
   filePrefix: 'terminal44_history',
-  withImage: false,
+  withImage: true, // snapshot image of the CSV, for a quick glance
 };
 const FLIX = {
   label: 'Flix',
