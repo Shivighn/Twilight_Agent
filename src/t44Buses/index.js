@@ -50,34 +50,31 @@ function csvField(value) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-// "8:15 PM" -> 20 (24h). The RPC only returns arrival/departure as pre-formatted
-// 12h text, so bucketing has to parse it back — no raw timestamp available.
-function parseHour24(timeStr) {
-  const m = /^(\d{1,2}):\d{2}\s(AM|PM)$/.exec(timeStr || '');
+// "8:15 PM" -> 1215 (minutes since midnight). The RPC only returns
+// arrival/departure as pre-formatted 12h text, so bucketing has to parse it
+// back — no raw timestamp available.
+function parseMinutes(timeStr) {
+  const m = /^(\d{1,2}):(\d{2})\s(AM|PM)$/.exec(timeStr || '');
   if (!m) return null;
   let h = Number(m[1]) % 12;
-  if (m[2] === 'PM') h += 12;
-  return h;
+  if (m[3] === 'PM') h += 12;
+  return h * 60 + Number(m[2]);
 }
 
-// 20 -> "8-9 PM"
-function hourRangeLabel(hour24) {
-  const h12 = ((hour24 + 11) % 12) + 1;
-  const next12 = (h12 % 12) + 1;
-  return `${h12}-${next12} PM`;
-}
-
-// ponytail: 8 PM through the end of the window (4 AM) — 8-9, 9-10, 10-11,
-// 11-12 PM, then everything after midnight lumped into one "After 12 AM" line.
+// ponytail: 7:30 PM through the end of the window (4 AM) — 7:30-9, 9-10,
+// 10-11, 11-12 PM, then everything after midnight lumped into "After 12 AM".
 const BUCKETS = [
-  ...[20, 21, 22, 23].map((h) => ({ label: hourRangeLabel(h), match: (x) => x === h })),
-  { label: 'After 12 AM', match: (x) => x !== null && x < 12 },
+  { label: '7:30-9 PM', match: (min) => min !== null && min >= 19 * 60 + 30 && min < 21 * 60 },
+  { label: '9-10 PM', match: (min) => min !== null && min >= 21 * 60 && min < 22 * 60 },
+  { label: '10-11 PM', match: (min) => min !== null && min >= 22 * 60 && min < 23 * 60 },
+  { label: '11-12 PM', match: (min) => min !== null && min >= 23 * 60 && min < 24 * 60 },
+  { label: 'After 12 AM', match: (min) => min !== null && min < 19 * 60 + 30 },
 ];
 
 /** "8-9 PM: 8 buses (2 IntrCity, 2 Flix, 4 Zing)" per bucket, joined by blank lines. Buckets by CHECK-IN (arrival) time. */
 function buildHourlySummary(rows) {
   const lines = BUCKETS.map(({ label, match }) => {
-    const inHour = rows.filter((r) => match(parseHour24(r.arrival)));
+    const inHour = rows.filter((r) => match(parseMinutes(r.arrival)));
     if (inHour.length === 0) return null; // skip empty time slots
     const counts = {};
     for (const r of inHour) counts[r.operator] = (counts[r.operator] || 0) + 1;
