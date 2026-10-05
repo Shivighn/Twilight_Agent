@@ -61,7 +61,7 @@ def read_env(key):
 
 
 def find_latest_excel():
-    files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_2026_15Septo5Oct.xlsx"))
+    files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_2026_Oct3to5.xlsx.xlsx"))
     files = [f for f in files if not os.path.basename(f).startswith("~$")]  # skip Excel lock files
     if not files:
         sys.exit(f"No Order_Listing_*.xlsx found in {REPO_ROOT}")

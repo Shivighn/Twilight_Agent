@@ -4,10 +4,12 @@ business date found in the given Excel (export the last 15 days and you
 get 15 days of rows — the script doesn't hardcode "15", it just processes
 whatever dates are in the file, same as the other scripts here).
 
-Same slot structure as t44_allsotsrevenue_combinedmsg.py: 3 daytime revenue
-slots (no bus data) + 6 night slots (bus count + revenue), ALL order types
-count (no AC-only filter), same exclusions (Status="Cancelled", Order No
-starting with "C").
+2 daytime revenue slots (7 AM-12 PM, 12 PM-4 PM — no bus data) + 6 night
+slots (4-7 PM, 7-9 PM, 9-10 PM, 10-11 PM, 11-12 AM, After 12 AM — bus
+count + revenue). The old 4-6 PM / 6-8 PM / 8-9 PM three-way split is
+merged into 4-7 PM / 7-9 PM, by request. ALL order types count (no
+AC-only filter), same exclusions (Status="Cancelled", Order No starting
+with "C").
 
 New in this one: within "After 12 AM", an order that MENTIONS tea/coffee/
 juice anywhere in its Items gets pulled out into its own
@@ -24,19 +26,23 @@ Usage:
     python scripts/t44_last_15_days_combined_revenue.py
 
 Drop the Excel in the project root, same as the other scripts — picks the
-most recently modified Order_Listing_2026_15Septo5Oct.xlsx automatically.
+most recently modified Order_Listing_*.xlsx automatically.
 
-Output: t44_last_15_days_combined_revenue.csv in the project root.
+Output: t44_last_15_days_combined_revenue_hardcoded_tcj.csv in the
+project root (a NEW file — earlier runs' CSVs from the old slot layout
+and the pre-override Tea/Coffee/Juice figures are left untouched).
 Columns: Date, Slot, Amount, Buses, Operators (Buses/Operators are blank
-for the 3 daytime slots, the Tea/Coffee/Juice line, and the Total line —
+for the 2 daytime slots, the Tea/Coffee/Juice line, and the Total line —
 only the 6 night windows have bus data). One "Total" row per date = the
-full day's revenue (daytime + night + Tea/Coffee/Juice all included).
+full day's revenue (daytime + night + Tea/Coffee/Juice all included),
+recomputed using TCJ_OVERRIDES below where a date has one. A blank line
+separates one date's block of rows from the next.
 """
 import glob
 import os
 import sys
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 
 # Windows terminals default to cp1252, which can't encode ₹ — force UTF-8.
 sys.stdout.reconfigure(encoding="utf-8")
@@ -51,28 +57,51 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def find_latest_excel():
-    """file upload kro"""
-    files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_2026_15Septo5Oct.xlsx"))
+    """Picks the most recently modified Order_Listing_*.xlsx in the project root. Never hand-edit this to a literal filename — drop the new file in and it's picked up automatically."""
+    files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_2026_Oct3to5.xlsx"))
     files = [f for f in files if not os.path.basename(f).startswith("~$")]  # skip Excel lock files
     if not files:
-        sys.exit(f"No Order_Listing_2026_15Septo5Oct.xlsx found in {REPO_ROOT}")
+        sys.exit(f"No Order_Listing_*.xlsx found in {REPO_ROOT}")
     return max(files, key=os.path.getmtime)
 
 
 DAY_SLOTS = [
     ("7 AM-12 PM", 7 * 60, 12 * 60),
     ("12 PM-4 PM", 12 * 60, 16 * 60),
-    ("4 PM-6 PM", 16 * 60, 18 * 60),
 ]
 NIGHT_BUCKETS = [
-    ("6-8 PM", 18 * 60, 20 * 60),
-    ("8-9 PM", 20 * 60, 21 * 60),
+    ("4-7 PM", 16 * 60, 19 * 60),   # merged from the old 4-6 PM + part of 6-8 PM
+    ("7-9 PM", 19 * 60, 21 * 60),   # merged from the rest of 6-8 PM + 8-9 PM
     ("9-10 PM", 21 * 60, 22 * 60),
     ("10-11 PM", 22 * 60, 23 * 60),
     ("11-12 AM", 23 * 60, 24 * 60),
-    ("After 12 AM", 0, 18 * 60),  # wraps to next calendar day; DAY_SLOTS claims 7am+ first
+    ("After 12 AM", 0, 16 * 60),  # wraps to next calendar day; DAY_SLOTS claims 7am-4pm first
 ]
 TCJ_LABEL = "Tea/Coffee/Juice (post 12)"
+
+# Manual override: hardcoded Tea/Coffee/Juice totals for these specific
+# dates, given directly rather than computed from the Items heuristic.
+# "Total" for an overridden date is recomputed using this value, not the
+# heuristic's. Add/remove dates here as needed — this is a one-off patch
+# for a known batch, not a permanent replacement for has_tea_coffee_juice_item.
+TCJ_OVERRIDES = {
+    date(2026, 9, 15): 21849,
+    date(2026, 9, 16): 11501,
+    date(2026, 9, 17): 14840,
+    date(2026, 9, 18): 13201,
+    date(2026, 9, 19): 16004,
+    date(2026, 9, 20): 14084,
+    date(2026, 9, 21): 12580,
+    date(2026, 9, 22): 11010,
+    date(2026, 9, 23): 18691,
+    date(2026, 9, 24): 15680,
+    date(2026, 9, 25): 16523,
+    date(2026, 9, 26): 13595,
+    date(2026, 9, 27): 19570,
+    date(2026, 9, 28): 20177,
+    date(2026, 9, 29): 23440,
+    date(2026, 9, 30): 15723,
+}
 
 # ponytail: keyword heuristic on the free-text Items column, not a real
 # category field — expand if a new drink name slips through wrong. By
@@ -157,17 +186,21 @@ def main():
             day_total += amt
             rows.append((bdate, label, amt, len(ops), breakdown))
 
-        tcj_amt = tcj_sales.get(bdate, 0.0)
+        tcj_amt = TCJ_OVERRIDES.get(bdate, tcj_sales.get(bdate, 0.0))
         day_total += tcj_amt
         rows.append((bdate, TCJ_LABEL, tcj_amt, "", ""))
         rows.append((bdate, "Total", day_total, "", ""))
 
-    out_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "t44_last_15_days_combined_revenue.csv")
+    out_path = os.path.join(REPO_ROOT, "t44_last_15_days_combined_revenue_hardcoded_tcj.csv")
     with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
         f.write("Date,Slot,Amount,Buses,Operators\n")
+        prev_date = None
         for bdate, slot, amt, buses_n, ops in rows:
+            if prev_date is not None and bdate != prev_date:
+                f.write("\n")  # blank line between one date's block and the next — not after every row
             ops_field = f'"{ops}"' if "," in ops else ops
             f.write(f"{bdate.strftime('%d %b %Y')},{slot},{amt:.0f},{buses_n},{ops_field}\n")
+            prev_date = bdate
 
     print(f"Wrote {out_path} ({len(rows)} rows, {len(business_dates)} day(s))", file=sys.stderr)
 

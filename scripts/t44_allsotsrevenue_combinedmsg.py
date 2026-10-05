@@ -8,7 +8,7 @@ Usage:
     python scripts/t44_allsotsrevenue_combinedmsg.py
 
 Just drop the Excel in the project root, same as the other two scripts —
-picks the most recently modified Order_Listing_*.xlsx automatically.
+picks the most recently modified Order_Listing_2026_Oct3to5.xlsx automatically.
 
 Excluded everywhere in this report, per request:
   - Status = "Cancelled" (not real revenue)
@@ -44,11 +44,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def find_latest_excel():
-    """Picks the most recently modified Order_Listing_*.xlsx in the project root. Never hand-edit this to a literal filename — drop the new file in and it's picked up automatically."""
-    files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_*.xlsx"))
+    """Picks the most recently modified Order_Listing_2026_Oct3to5.xlsx in the project root. Never hand-edit this to a literal filename — drop the new file in and it's picked up automatically."""
+    files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_2026_Oct3to5.xlsx"))
     files = [f for f in files if not os.path.basename(f).startswith("~$")]  # skip Excel lock files
     if not files:
-        sys.exit(f"No Order_Listing_*.xlsx found in {REPO_ROOT}")
+        sys.exit(f"No Order_Listing_2026_Oct3to5.xlsx found in {REPO_ROOT}")
     return max(files, key=os.path.getmtime)
 
 
