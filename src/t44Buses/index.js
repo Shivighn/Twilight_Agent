@@ -84,7 +84,7 @@ function buildHourlySummary(rows) {
     const busWord = inHour.length === 1 ? 'bus' : 'buses';
     return `${label}: ${inHour.length} ${busWord}${breakdown ? ` (${breakdown})` : ''}`;
   }).filter(Boolean);
-  return [...lines, 'etc'].join('\n\n');
+  return lines.join('\n\n');
 }
 
 /**
