@@ -8,7 +8,7 @@ Usage:
     python scripts/t44_allsotsrevenue_combinedmsg.py
 
 Just drop the Excel in the project root, same as the other two scripts —
-picks the most recently modified Order_Listing_2026_Oct3to5.xlsx automatically.
+picks the most recently modified Order_Listing_2026_10_06_12_14_42.xlsx automatically.
 
 Excluded everywhere in this report, per request:
   - Status = "Cancelled" (not real revenue)
@@ -23,6 +23,12 @@ Daytime slots (Grand Total summed, any Sub Order Type):
 Evening/night slots (bus count + revenue, any Sub Order Type):
     6-8 PM, 8-9 PM, 9-10 PM, 10-11 PM, 11-12 AM, After 12 AM
 All slots always print, even at ₹0 / 0 buses — none are skipped.
+
+Within "After 12 AM", an order that MENTIONS tea/coffee/juice anywhere in
+its Items is carved out into its own "Tea/Coffee/Juice (post 12)" line
+instead of counting in "After 12 AM" — same rule as
+t44_last_15_days_combined_revenue.py, just applied to yesterday's single
+day here instead of every date in the file.
 """
 import glob
 import os
@@ -44,11 +50,11 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def find_latest_excel():
-    """Picks the most recently modified Order_Listing_2026_Oct3to5.xlsx in the project root. Never hand-edit this to a literal filename — drop the new file in and it's picked up automatically."""
-    files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_2026_Oct3to5.xlsx"))
+    """Picks the most recently modified Order_Listing_*.xlsx in the project root. YAHA PE FILE NAME ATTACH KRDO"""
+    files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_*.xlsx"))
     files = [f for f in files if not os.path.basename(f).startswith("~$")]  # skip Excel lock files
     if not files:
-        sys.exit(f"No Order_Listing_2026_Oct3to5.xlsx found in {REPO_ROOT}")
+        sys.exit(f"No Order_Listing_*.xlsx found in {REPO_ROOT}")
     return max(files, key=os.path.getmtime)
 
 
@@ -65,20 +71,35 @@ NIGHT_BUCKETS = [
     ("11-12 AM", 23 * 60, 24 * 60),
     ("After 12 AM", 0, 18 * 60),  # wraps to next calendar day, capped at 4 AM (see fold_business_date)
 ]
+TCJ_LABEL = "Tea/Coffee/Juice"
+
+# ponytail: keyword heuristic on the free-text Items column, not a real
+# category field — expand if a new drink name slips through wrong. ANY
+# item mentioning one of these counts the WHOLE order as Tea/Coffee/Juice,
+# even if that item also mentions other things (e.g. a combo/counter SKU
+# like "Juice,Milkshakes,Icecreams,Softdrinksand Cigaretts" counts,
+# because it says "Juice") — same rule as t44_last_15_days_combined_revenue.py.
+QUALIFY_KEYWORDS = ("tea", "coffee", "chai", "juice")
+
+
+def has_tea_coffee_juice_item(items_text):
+    items = [i.strip() for i in (items_text or "").split(",") if i.strip()]
+    return any(any(good in item.lower() for good in QUALIFY_KEYWORDS) for item in items)
 
 
 def load_orders(xlsx_path):
     """
-    Returns list of (created: datetime, amount: float, sub_order_type: str)
-    for every non-cancelled order whose Order No does NOT start with "C".
-    Does NOT filter to AC only — every order type counts, both daytime and
-    night. Uses group_orders() (t44_ac_sales_report.py) so a split/part-
-    payment order's amount — spread across continuation rows in the raw
-    sheet — is correctly merged back onto its order instead of read as ₹0.
+    Returns list of (created: datetime, amount: float, sub_order_type: str,
+    items: str) for every non-cancelled order whose Order No does NOT start
+    with "C". Does NOT filter to AC only — every order type counts, both
+    daytime and night. Uses group_orders() (t44_ac_sales_report.py) so a
+    split/part-payment order's amount — spread across continuation rows in
+    the raw sheet — is correctly merged back onto its order instead of
+    read as ₹0.
     """
     orders = group_orders(xlsx_path)
     return [
-        (o["created"], o["amount"], o["sub_order_type"])
+        (o["created"], o["amount"], o["sub_order_type"], o["items"])
         for o in orders
         if o["status"] != "Cancelled" and not (isinstance(o["order_no"], str) and o["order_no"].upper().startswith("C"))
     ]
@@ -87,6 +108,21 @@ def load_orders(xlsx_path):
 def fold_business_date(dt):
     """Before 4 AM belongs to the PREVIOUS business day (same 4 AM cutoff the bus-bay report uses); else same calendar day."""
     return dt.date() - timedelta(days=1) if dt.hour < 4 else dt.date()
+
+
+def indian_format(n):
+    """1234567 -> "12,34,567" (lakh/crore grouping: last 3 digits, then pairs)."""
+    s = str(int(round(n)))
+    if len(s) <= 3:
+        return s
+    last3, rest = s[-3:], s[:-3]
+    parts = []
+    while len(rest) > 2:
+        parts.insert(0, rest[-2:])
+        rest = rest[:-2]
+    if rest:
+        parts.insert(0, rest)
+    return ",".join(parts) + "," + last3
 
 
 def bucket_label(minutes, buckets):
@@ -106,14 +142,15 @@ def main():
     # most orders fold to, so a stray sliver from an adjacent day can't
     # hijack the report date.
     counts = defaultdict(int)
-    for created, _, _ in orders:
+    for created, _, _, _ in orders:
         counts[fold_business_date(created)] += 1
     report_date = max(counts, key=counts.get)
     print(f"Report date: {report_date}", file=sys.stderr)
 
     day_sales = defaultdict(float)  # day-slot label -> amount (ALL orders)
-    night_sales = defaultdict(float)  # night-bucket label -> amount (any order type)
-    for created, amount, sub_order_type in orders:
+    night_sales = defaultdict(float)  # night-bucket label -> amount, EXCLUDING tea/coffee/juice orders
+    tcj_total = 0.0  # tea/coffee/juice-only amount, carved out of "After 12 AM"
+    for created, amount, sub_order_type, items in orders:
         if fold_business_date(created) != report_date:
             continue
         minutes = created.hour * 60 + created.minute
@@ -122,7 +159,9 @@ def main():
             day_sales[day_label] += amount
             continue
         night_label = bucket_label(minutes, NIGHT_BUCKETS)
-        if night_label:
+        if night_label == "After 12 AM" and has_tea_coffee_juice_item(items):
+            tcj_total += amount
+        elif night_label:
             night_sales[night_label] += amount
 
     buses = fetch_buses(report_date)
@@ -132,7 +171,8 @@ def main():
         if label:
             buses_by_window[label].append(b.get("operator"))
 
-    lines = [f"{report_date.strftime('%d %b')}, {len(buses)} buses stopped at T-44"]
+    total_sales = sum(day_sales.values()) + sum(night_sales.values()) + tcj_total
+    lines = [f"{report_date.strftime('%d %b')}, {len(buses)} buses stopped at T-44, Total Sales = ₹{indian_format(total_sales)}"]
 
     for label, _, _ in DAY_SLOTS:
         lines.append(f"{label}: ₹{day_sales.get(label, 0.0):.0f}")
@@ -149,11 +189,13 @@ def main():
             line += f" ({breakdown})"
         lines.append(line)
 
+    lines.append(f"{TCJ_LABEL}: ₹{tcj_total:.0f}")
+
     message = "\n\n".join(lines)
     print()
     print(message)
     print()
-    print(f"(Daytime total: ₹{sum(day_sales.values()):.0f}, Night total: ₹{sum(night_sales.values()):.0f})", file=sys.stderr)
+    print(f"(Daytime total: ₹{sum(day_sales.values()):.0f}, Night total: ₹{sum(night_sales.values()):.0f}, Tea/Coffee/Juice: ₹{tcj_total:.0f})", file=sys.stderr)
 
 
 if __name__ == "__main__":

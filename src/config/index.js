@@ -153,6 +153,25 @@ const config = {
     runTime: process.env.T44_BUSES_RUN_TIME || '05:00', // HH:mm, interpreted in `timezone`
     whatsappGroupId: process.env.T44_BUSES_WHATSAPP_GROUP_ID || 'Agent Test',
   },
+  // Daily occupancy/ASP report — builds scripts/"todaysbuses expectancy.txt"
+  // automatically (missedBusesUrl for the bus numbers, then a Supabase RPC
+  // for each one's Operator/Service Number/Route/Last Check In — see
+  // src/todayOccupancy/expectancyBuilder.js), then runs the existing
+  // scripts/todayOccupancy.py as a child process (its own logic is
+  // untouched) and sends the CSV it writes.
+  todayOccupancy: {
+    enabled: (process.env.TODAY_OCCUPANCY_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: 'Asia/Kolkata',
+    runTime: process.env.TODAY_OCCUPANCY_RUN_TIME || '18:00', // HH:mm, interpreted in `timezone`
+    pythonBin: process.env.TODAY_OCCUPANCY_PYTHON_BIN || 'python3',
+    whatsappGroupId: process.env.TODAY_OCCUPANCY_WHATSAPP_GROUP_ID || 'Agent Test',
+    // The admin app's endpoint for which bus numbers to look up. "localhost"
+    // only works if that admin app runs on the SAME machine as this
+    // gateway process — true today (local testing); re-check this once
+    // the job moves to the VPS, where that admin app may not be reachable
+    // at this address (or may not be running there at all).
+    missedBusesUrl: process.env.TODAY_OCCUPANCY_MISSED_BUSES_URL || 'http://localhost:3000/terminal44/missed-buses?days=4',
+  },
 };
 
 module.exports = config;
