@@ -63,13 +63,23 @@ DAY_SLOTS = [
     ("12 PM-4 PM", 12 * 60, 16 * 60),
     ("4 PM-6 PM", 16 * 60, 18 * 60),
 ]
+#   6-8 PM:    6:00 - 7:50
+#   8-9 PM:    7:50 - 8:50
+#   9-10 PM:   8:50 - 9:50
+#   10-11 PM:  9:50 - 10:50
+#   11-12 AM: 10:50 - 11:50
+#   After 12 AM: 11:50 PM onwards (then wraps past midnight)
+# Every boundary ends 10 min before its label's nominal hour, and the next
+# label picks up exactly where the previous one left off — a bus within
+# the last 10 min of an hour counts under the NEXT label instead.
 NIGHT_BUCKETS = [
-    ("6-8 PM", 18 * 60, 20 * 60),
-    ("8-9 PM", 20 * 60, 21 * 60),
-    ("9-10 PM", 21 * 60, 22 * 60),
-    ("10-11 PM", 22 * 60, 23 * 60),
-    ("11-12 AM", 23 * 60, 24 * 60),
-    ("After 12 AM", 0, 18 * 60),  # wraps to next calendar day, capped at 4 AM (see fold_business_date)
+    ("6-8 PM", 18 * 60, 19 * 60 + 50),
+    ("8-9 PM", 19 * 60 + 50, 20 * 60 + 50),
+    ("9-10 PM", 20 * 60 + 50, 21 * 60 + 50),
+    ("10-11 PM", 21 * 60 + 50, 22 * 60 + 50),
+    ("11-12 AM", 22 * 60 + 50, 23 * 60 + 50),
+    ("After 12 AM", 23 * 60 + 50, 24 * 60),  # 11:50 PM - midnight
+    ("After 12 AM", 0, 18 * 60),  # midnight onwards, wraps to next calendar day, capped at 4 AM (see fold_business_date)
 ]
 TCJ_LABEL = "Tea/Coffee/Juice"
 
@@ -177,7 +187,7 @@ def main():
     for label, _, _ in DAY_SLOTS:
         lines.append(f"{label}: ₹{day_sales.get(label, 0.0):.0f}")
 
-    for label, _, _ in NIGHT_BUCKETS:
+    for label in dict.fromkeys(lbl for lbl, _, _ in NIGHT_BUCKETS):  # "After 12 AM" is TWO tuples (see NIGHT_BUCKETS) but one printed line
         ops = buses_by_window.get(label, [])
         op_counts = defaultdict(int)
         for op in ops:

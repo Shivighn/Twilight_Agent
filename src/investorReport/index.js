@@ -13,6 +13,23 @@ function csvField(value) {
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** "2026-09-30" (Postgres date, from the RPC) -> "30 Sep 2026". */
+function formatInvestmentDate(isoDate) {
+  if (!isoDate) return '';
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return `${d} ${MONTH_ABBR[m - 1]} ${y}`;
+}
+
+// Excel auto-detects a cell that LOOKS like a date and reformats it to its
+// own locale short-date display (e.g. "30 Sep 2026" -> "20-09-26") — same
+// issue already solved for Service IDs in terminal44/csvBuilder.js. Force
+// it to stay literal text with the standard ="..." trick; only for the CSV
+// — the snapshot image renders the text directly, so it never needs this.
+function excelTextForce(value) {
+  if (value === null || value === undefined || value === '') return '';
+  return `="${String(value).replace(/"/g, '""')}"`;
+}
+
 /** "14 Sep - 20 Sep" — last week's Monday-Sunday, matching the SQL's date_trunc('week', ...) window. Recomputed every call. */
 function lastWeekRangeIST(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -53,7 +70,9 @@ async function runOnce() {
   const lines = [headers.map(csvField).join(',')];
   for (const r of rows) {
     lines.push(
-      [r.investment_date, r.invested_amount, r.investor_name, r.pool_name].map(csvField).join(',')
+      [excelTextForce(formatInvestmentDate(r.investment_date)), r.invested_amount, r.investor_name, r.pool_name]
+        .map(csvField)
+        .join(',')
     );
   }
   const csv = lines.join('\n');
@@ -86,7 +105,7 @@ async function runOnce() {
   // at a glance. Sent as a second message, same group — CSV stays as-is.
   const imageBuffer = await buildTableImage(
     headers,
-    rows.map((r) => [r.investment_date, r.invested_amount, r.investor_name, r.pool_name])
+    rows.map((r) => [formatInvestmentDate(r.investment_date), r.invested_amount, r.investor_name, r.pool_name])
   );
   const imageResult = await sendToChat(jid, { image: imageBuffer });
   if (!imageResult.success) throw new Error(`[InvestorReport] Snapshot image send failed: ${imageResult.error}`);

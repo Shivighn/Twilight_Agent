@@ -298,6 +298,7 @@ def report(wanted, results):
             claimed.add(id(r))
 
     by_bus = []
+    fleet_sold, fleet_seats = 0, 0  # running totals across the SAME filtered rows that go into by_bus/the CSV
     for w in wanted:
         exact = exact_of[w["bus"]]
         if exact:
@@ -311,14 +312,22 @@ def report(wanted, results):
         for r in rs:
             r["ListBusNumbers"].append(w["bus"] + ("" if len(rs) == 1 else "?"))
         s, t = sum(r["Sold"] for r in rs), sum(r["TotalSeats"] for r in rs)
-        if not rs or not (0 < t < 50):  # only a clean "sold/total" with total <50 is trusted — anything else (no match, or several buses averaged into an inflated total) skips the row entirely
+        # Only a clean "sold/total" is trusted: 0<=sold<=total<50 (no match,
+        # several buses averaged into an inflated total, or sold exceeding
+        # total all skip the row), AND sold>=15 — below that, Excel reads
+        # "sold/total" as a day/month date (e.g. "9/42" -> "Sep-42") since a
+        # numerator under 15 can look like a valid month; skip those too
+        # rather than fight Excel's own auto-formatting.
+        if not rs or not (0 < t < 50) or not (0 <= s <= t) or s < 15:
             continue
+        fleet_sold += s
+        fleet_seats += t
         a = [r["ASP"] for r in rs if r["ASP"] != ""]
         by_bus.append({
             "Bus Number": w["bus"], "Operator": w["op"], "Route": w["route"],
             "Dep Hyd": rs[0]["DepHyd"][11:16] if len(rs) == 1 else "",
             "Jadcherla": rs[0]["Jadcherla"] if len(rs) == 1 else "",
-            "Seats sold": f"{s}/{t}" if rs else "",
+            "Seats sold": f"{s}/{t}",
             "ASP": round(sum(a) / len(a)) if a else "",
         })
     by_bus.sort(key=lambda b: b["Dep Hyd"])  # ascending by Hyderabad departure time ("HH:MM", zero-padded, sorts correctly as text)
@@ -346,6 +355,13 @@ def report(wanted, results):
         w.writeheader()
         w.writerows(by_bus)
     print(f"\nYOUR BUSES -> {out_name}")
+    # Fleet-wide average occupancy: sold seats over total seats, summed
+    # across the SAME buses actually in the CSV above (not every bus Redbus
+    # returned) — a ratio of sums, not a mean of each bus's own %, so one
+    # near-empty 36-seater and one near-full 48-seater don't average out to
+    # something misleading relative to their actual seat counts.
+    avg_occ_pct = 100 * fleet_sold / fleet_seats if fleet_seats else 0.0
+    print(f"AVG OCCUPANCY: {avg_occ_pct:.1f}% (across {len(by_bus)} buses)")
     for b in by_bus:
         print(f"   {b['Bus Number']:11} {b['Operator']:18} {b['Route']:10} "
               f"{b['Jadcherla']:20} Seats {b['Seats sold']:<8} ₹{b['ASP']}")

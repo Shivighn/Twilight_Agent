@@ -68,6 +68,11 @@ async function runOnce() {
   const csvPath = path.join(SCRIPTS_DIR, match[1]);
   const csvBuffer = fs.readFileSync(csvPath);
 
+  // Printed right after "YOUR BUSES -> ..." — per request, included in the
+  // same WhatsApp message as the CSV rather than as a separate send.
+  const avgMatch = stdout.match(/AVG OCCUPANCY: ([\d.]+%.*)/);
+  const avgLine = avgMatch ? `\nAvg Occupancy: ${avgMatch[1]}` : '';
+
   const { whatsappGroupId } = config.todayOccupancy;
   const jid = await resolveGroupJidByName(whatsappGroupId);
   if (!jid) throw new Error(`[TodayOccupancy] Could not find WhatsApp group "${whatsappGroupId}"`);
@@ -76,7 +81,7 @@ async function runOnce() {
     document: csvBuffer,
     fileName: path.basename(csvPath),
     mimetype: 'text/csv',
-    caption: `Today's Expected Occupancy & ASP: ${dateStr}`,
+    caption: `Today's Expected Occupancy & ASP: ${dateStr}${avgLine}`,
   });
   if (!result.success) throw new Error(`[TodayOccupancy] Send failed: ${result.error}`);
 
