@@ -24,6 +24,15 @@ Evening/night slots (bus count + revenue, any Sub Order Type):
     6-8 PM, 8-9 PM, 9-10 PM, 10-11 PM, 11-12 AM, After 12 AM
 All slots always print, even at ₹0 / 0 buses — none are skipped.
 
+Each bus is assigned to whichever slot holds the MAJORITY of its check-in-
+to-checkout duration, not just its check-in instant — see assign_bus_slot.
+A bus in at 6:45, out at 7:45 (15 min left in "6-8 PM", 45 min into what
+would be the next hour) counts as having spent most of its time past the
+hour mark; one in at 7:55, out at 8:15 counts under "8-9 PM" (15 min there
+vs 5 min left in "6-8 PM"). Revenue (order) bucketing is unaffected — an
+order is a single instant, not a duration, so it still looks up its
+Created time as a point.
+
 Within "After 12 AM", an order that MENTIONS tea/coffee/juice anywhere in
 its Items is carved out into its own "Tea/Coffee/Juice (post 12)" line
 instead of counting in "After 12 AM" — same rule as
@@ -50,7 +59,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def find_latest_excel():
-    """Picks the most recently modified Order_Listing_*.xlsx in the project root. YAHA PE FILE NAME ATTACH KRDO"""
+    """Picks the most recently modified Order_Listing_*.xlsx in the project root. Never hand-edit this to a literal filename — drop the new file in and it's picked up automatically."""
     files = glob.glob(os.path.join(REPO_ROOT, "Order_Listing_*.xlsx"))
     files = [f for f in files if not os.path.basename(f).startswith("~$")]  # skip Excel lock files
     if not files:
@@ -63,24 +72,31 @@ DAY_SLOTS = [
     ("12 PM-4 PM", 12 * 60, 16 * 60),
     ("4 PM-6 PM", 16 * 60, 18 * 60),
 ]
-#   6-8 PM:    6:00 - 7:50
-#   8-9 PM:    7:50 - 8:50
-#   9-10 PM:   8:50 - 9:50
-#   10-11 PM:  9:50 - 10:50
-#   11-12 AM: 10:50 - 11:50
-#   After 12 AM: 11:50 PM onwards (then wraps past midnight)
-# Every boundary ends 10 min before its label's nominal hour, and the next
-# label picks up exactly where the previous one left off — a bus within
-# the last 10 min of an hour counts under the NEXT label instead.
+# Plain hourly boundaries, on a "minutes since 6 PM" scale (see
+# minutes_since_6pm) instead of minutes-since-midnight — that makes the
+# midnight wrap a non-issue (no duplicate "After 12 AM" tuples needed) and
+# lets the SAME ranges serve both revenue point-lookups and bus duration-
+# overlap below.
+#   6-8 PM:      0 -  120 (6:00 PM  -  8:00 PM)
+#   8-9 PM:    120 -  180 (8:00 PM  -  9:00 PM)
+#   9-10 PM:   180 -  240 (9:00 PM  - 10:00 PM)
+#   10-11 PM:  240 -  300 (10:00 PM - 11:00 PM)
+#   11-12 AM:  300 -  360 (11:00 PM - 12:00 AM)
+#   After 12 AM: 360 - 600 (12:00 AM - 4:00 AM)
 NIGHT_BUCKETS = [
-    ("6-8 PM", 18 * 60, 19 * 60 + 50),
-    ("8-9 PM", 19 * 60 + 50, 20 * 60 + 50),
-    ("9-10 PM", 20 * 60 + 50, 21 * 60 + 50),
-    ("10-11 PM", 21 * 60 + 50, 22 * 60 + 50),
-    ("11-12 AM", 22 * 60 + 50, 23 * 60 + 50),
-    ("After 12 AM", 23 * 60 + 50, 24 * 60),  # 11:50 PM - midnight
-    ("After 12 AM", 0, 18 * 60),  # midnight onwards, wraps to next calendar day, capped at 4 AM (see fold_business_date)
+    ("6-8 PM", 0, 120),
+    ("8-9 PM", 120, 180),
+    ("9-10 PM", 180, 240),
+    ("10-11 PM", 240, 300),
+    ("11-12 AM", 300, 360),
+    ("After 12 AM", 360, 600),
 ]
+
+
+def minutes_since_6pm(raw_minutes):
+    """Wall-clock minutes-since-midnight (0-1439) -> minutes since 6 PM, wrapping post-midnight hours (0:xx-5:xx) onto the END of the same night instead of back to its own start — so NIGHT_BUCKETS never needs to wrap across midnight itself."""
+    six_pm = 18 * 60
+    return raw_minutes - six_pm if raw_minutes >= six_pm else raw_minutes + (24 * 60 - six_pm)
 TCJ_LABEL = "Tea/Coffee/Juice"
 
 # ponytail: keyword heuristic on the free-text Items column, not a real
@@ -141,6 +157,41 @@ def bucket_label(minutes, buckets):
     return next((lbl for lbl, start, end in buckets if start <= minutes < end), None)
 
 
+def assign_bus_slot(arrival_str, departure_str, buckets):
+    """
+    Assigns a bus to whichever NIGHT_BUCKETS slot holds the MAJORITY of its
+    check-in-to-checkout duration — not just its check-in instant. Replaces
+    the earlier 10-minute-buffer approach.
+
+    Picking the slot with the single largest overlap is equivalent to "the
+    slot with >=66% of the duration" whenever one exists (two slots can't
+    both hold a majority of the same total), and gives a sensible, always-
+    deterministic fallback on the rare case nothing reaches 66% (e.g. an
+    unusually long stop split close to evenly across 3+ slots) — so no
+    separate percentage check is needed.
+
+        6:45-7:45 -> 15 min in "6-8 PM" vs ... both halves are inside the
+        same 2-hour "6-8 PM" bucket here, so that pair doesn't cross a real
+        boundary; a bus spanning a REAL one, e.g. 7:55-8:15 (5 min left of
+        "6-8 PM", 15 min into "8-9 PM"), is assigned "8-9 PM".
+
+    Returns None if either time is unparseable or checkout isn't after check-in.
+    """
+    arrival = parse_ampm(arrival_str)
+    departure = parse_ampm(departure_str)
+    if arrival is None or departure is None:
+        return None
+    start, end = minutes_since_6pm(arrival), minutes_since_6pm(departure)
+    if end <= start:  # malformed/zero-length after the 6 PM-anchored conversion — skip rather than guess
+        return None
+    best_label, best_overlap = None, 0
+    for label, b_start, b_end in buckets:
+        overlap = max(0, min(end, b_end) - max(start, b_start))
+        if overlap > best_overlap:
+            best_label, best_overlap = label, overlap
+    return best_label
+
+
 def main():
     xlsx_path = find_latest_excel()
     print(f"Reading {os.path.basename(xlsx_path)}", file=sys.stderr)
@@ -168,7 +219,7 @@ def main():
         if day_label:
             day_sales[day_label] += amount
             continue
-        night_label = bucket_label(minutes, NIGHT_BUCKETS)
+        night_label = bucket_label(minutes_since_6pm(minutes), NIGHT_BUCKETS)
         if night_label == "After 12 AM" and has_tea_coffee_juice_item(items):
             tcj_total += amount
         elif night_label:
@@ -177,7 +228,7 @@ def main():
     buses = fetch_buses(report_date)
     buses_by_window = defaultdict(list)
     for b in buses:
-        label = bucket_label(parse_ampm(b.get("arrival")), NIGHT_BUCKETS)
+        label = assign_bus_slot(b.get("arrival"), b.get("departure"), NIGHT_BUCKETS)
         if label:
             buses_by_window[label].append(b.get("operator"))
 
@@ -187,7 +238,7 @@ def main():
     for label, _, _ in DAY_SLOTS:
         lines.append(f"{label}: ₹{day_sales.get(label, 0.0):.0f}")
 
-    for label in dict.fromkeys(lbl for lbl, _, _ in NIGHT_BUCKETS):  # "After 12 AM" is TWO tuples (see NIGHT_BUCKETS) but one printed line
+    for label, _, _ in NIGHT_BUCKETS:
         ops = buses_by_window.get(label, [])
         op_counts = defaultdict(int)
         for op in ops:

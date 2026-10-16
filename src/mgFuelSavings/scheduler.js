@@ -1,7 +1,7 @@
 const cron = require('node-cron');
 const config = require('../config');
 const logger = require('../utils/logger');
-const { runMorning, runAfternoon } = require('./index');
+const { runMorning } = require('./index');
 
 /** "10:00" -> "0 10 * * *" */
 function cronExpressionFor(runTime) {
@@ -10,14 +10,18 @@ function cronExpressionFor(runTime) {
 }
 
 /**
- * Registers TWO daily MG Fuel Savings runs. Explicitly passes `timezone`
- * to node-cron (IANA name, "Asia/Kolkata") rather than relying on the
- * server's local time zone — same reasoning as fleetIssues/scheduler.js
- * and terminal44/scheduler.js.
- *   - 10 AM: always runs.
- *   - 4 PM: always FIRES, but runAfternoon() itself decides whether to
- *     actually fetch/send, based on whether the 10 AM run (persisted to
- *     disk — see morningResultStore.js) found any anomalies.
+ * Registers ONE daily MG Fuel Savings run, at 4 PM. Explicitly passes
+ * `timezone` to node-cron (IANA name, "Asia/Kolkata") rather than relying
+ * on the server's local time zone — same reasoning as
+ * fleetIssues/scheduler.js and terminal44/scheduler.js.
+ *
+ * The 10 AM run is paused — not scheduled at all, so it cannot fire under
+ * any circumstance. It calls runMorning() (the unconditional fetch+send,
+ * same function the old 10 AM slot used), NOT runAfternoon() — that one
+ * only sends if a 10 AM run already persisted an anomaly count today (see
+ * morningResultStore.js), which would never exist now that 10 AM doesn't
+ * run, so it would silently skip forever. runMorning/runAfternoon's own
+ * code is untouched; only which one gets scheduled, and when, changed.
  */
 function startMgFuelSavingsScheduler() {
   if (!config.mgFuelSavings.enabled) {
@@ -30,26 +34,14 @@ function startMgFuelSavingsScheduler() {
     );
   }
 
-  const morningExpr = cronExpressionFor(config.mgFuelSavings.runTime);
-  logger.info(
-    `[MgFuelSavings] Scheduling 10 AM run at ${config.mgFuelSavings.runTime} (${config.mgFuelSavings.timezone}) — cron "${morningExpr}"`
-  );
-  cron.schedule(
-    morningExpr,
-    () => {
-      runMorning().catch((err) => logger.error(`[MgFuelSavings] Unhandled 10 AM run error: ${err.message}`, err));
-    },
-    { timezone: config.mgFuelSavings.timezone }
-  );
-
   const afternoonExpr = cronExpressionFor(config.mgFuelSavings.afternoonRunTime);
   logger.info(
-    `[MgFuelSavings] Scheduling 4 PM run at ${config.mgFuelSavings.afternoonRunTime} (${config.mgFuelSavings.timezone}) — cron "${afternoonExpr}" (only sends if the 10 AM run found anomalies)`
+    `[MgFuelSavings] Scheduling daily run at ${config.mgFuelSavings.afternoonRunTime} (${config.mgFuelSavings.timezone}) — cron "${afternoonExpr}" (10 AM run is paused)`
   );
   cron.schedule(
     afternoonExpr,
     () => {
-      runAfternoon().catch((err) => logger.error(`[MgFuelSavings] Unhandled 4 PM run error: ${err.message}`, err));
+      runMorning().catch((err) => logger.error(`[MgFuelSavings] Unhandled run error: ${err.message}`, err));
     },
     { timezone: config.mgFuelSavings.timezone }
   );
