@@ -53,7 +53,7 @@ sys.stderr.reconfigure(encoding="utf-8")
 # This script finds its own Excel file — independent of t44_ac_sales_report.py.
 # Still reuses its bus/Grand-Total loaders below (those aren't "file allocation").
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from t44_ac_sales_report import fetch_buses, parse_ampm, group_orders  # noqa: E402
+from t44_ac_sales_report import fetch_buses, parse_ampm, group_orders, normalize_bus_number, count_distinct_buses  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -230,22 +230,28 @@ def main():
     for b in buses:
         label = assign_bus_slot(b.get("arrival"), b.get("departure"), NIGHT_BUCKETS)
         if label:
-            buses_by_window[label].append(b.get("operator"))
+            buses_by_window[label].append((b.get("operator"), normalize_bus_number(b.get("bus_number"))))
 
     total_sales = sum(day_sales.values()) + sum(night_sales.values()) + tcj_total
-    lines = [f"{report_date.strftime('%d %b')}, {len(buses)} buses stopped at T-44, Total Sales = ₹{indian_format(total_sales)}"]
+    bus_count = count_distinct_buses(buses)
+    lines = [f"{report_date.strftime('%d %b')}, {bus_count} buses stopped at T-44, Total Sales = ₹{indian_format(total_sales)}"]
 
     for label, _, _ in DAY_SLOTS:
         lines.append(f"{label}: ₹{day_sales.get(label, 0.0):.0f}")
 
     for label, _, _ in NIGHT_BUCKETS:
-        ops = buses_by_window.get(label, [])
+        entries = buses_by_window.get(label, [])
+        seen = set()
         op_counts = defaultdict(int)
-        for op in ops:
+        for op, bus_no in entries:
+            if bus_no in seen:
+                continue
+            seen.add(bus_no)
             op_counts[op or "?"] += 1
+        distinct_count = len(seen)
         breakdown = ", ".join(f"{c} {op}" for op, c in sorted(op_counts.items(), key=lambda kv: -kv[1]))
-        bus_word = "bus" if len(ops) == 1 else "buses"
-        line = f"{label}: {len(ops)} {bus_word}, ₹{night_sales.get(label, 0.0):.0f}"
+        bus_word = "bus" if distinct_count == 1 else "buses"
+        line = f"{label}: {distinct_count} {bus_word}, ₹{night_sales.get(label, 0.0):.0f}"
         if breakdown:
             line += f" ({breakdown})"
         lines.append(line)

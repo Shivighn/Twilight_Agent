@@ -151,14 +151,16 @@ def bucket_sales(orders, dates):
 
 
 def fetch_buses(date_):
-    """Same window contract as windowForDate() in src/t44Buses/index.js: that day 06:00 IST -> next day 04:00 IST."""
+    """Operational-day window: that day 04:00 IST -> next day 04:00 IST, bucketed by
+    check-in (scheduled_arrival) time, per the T44 hard rule. Matches windowForDate()
+    in src/t44Buses/index.js once that's updated to the same 4 AM cutoff."""
     supabase_url = read_env("SUPABASE_URL")
     service_key = read_env("SUPABASE_SERVICE_ROLE_KEY")
     if not supabase_url or not service_key:
         sys.exit("SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not found in .env")
 
-    day_start = datetime(date_.year, date_.month, date_.day, 6, 0, tzinfo=IST)
-    next_day_end = day_start + timedelta(days=1, hours=-2)  # next day 04:00 IST
+    day_start = datetime(date_.year, date_.month, date_.day, 4, 0, tzinfo=IST)
+    next_day_end = day_start + timedelta(days=1)  # next day 04:00 IST
     resp = requests.post(
         f"{supabase_url}/rest/v1/rpc/t44_bus_bay_report",
         json={"p_from": day_start.isoformat(), "p_to": next_day_end.isoformat()},
@@ -167,6 +169,19 @@ def fetch_buses(date_):
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def normalize_bus_number(bus_number):
+    """Upper-case, strip spaces/tabs/NBSP — two bus numbers that only differ by
+    whitespace or case count as the SAME bus, per the T44 hard rule."""
+    if not bus_number:
+        return ""
+    return re.sub(r"[ \t\xa0]", "", bus_number).upper()
+
+
+def count_distinct_buses(buses):
+    """Distinct bus count per the T44 hard rule's "Buses" definition."""
+    return len({normalize_bus_number(b.get("bus_number")) for b in buses})
 
 
 def parse_ampm(time_str):

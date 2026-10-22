@@ -172,6 +172,19 @@ const config = {
     // at this address (or may not be running there at all).
     missedBusesUrl: process.env.TODAY_OCCUPANCY_MISSED_BUSES_URL || 'http://localhost:3000/terminal44/missed-buses?days=4',
   },
+  // Weekly Trugo bus arrival report — same t44_bus_bay_report Supabase RPC
+  // and window convention as t44Buses, filtered to the Trugo operator,
+  // CSV/caption styled like terminal44's IntrCity/Flix reports. Trugo gets
+  // far fewer buses, so this runs weekly (Monday), not daily.
+  trugoReport: {
+    enabled: (process.env.TRUGO_REPORT_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: 'Asia/Kolkata',
+    runTime: process.env.TRUGO_REPORT_RUN_TIME || '05:30', // HH:mm, interpreted in `timezone`
+    // cron day-of-week (0=Sun..6=Sat). Default 1 = Monday. Override to test
+    // on another day without editing scheduler.js — set back to 1 for real use.
+    dayOfWeek: process.env.TRUGO_REPORT_DAY_OF_WEEK || '1',
+    whatsappGroupId: process.env.TRUGO_REPORT_WHATSAPP_GROUP_ID || 'Agent Test',
+  },
 };
 
 module.exports = config;
