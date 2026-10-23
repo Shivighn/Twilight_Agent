@@ -76,6 +76,7 @@ async function runOnce() {
   const { whatsappGroupId } = config.todayOccupancy;
   const jid = await resolveGroupJidByName(whatsappGroupId);
   if (!jid) throw new Error(`[TodayOccupancy] Could not find WhatsApp group "${whatsappGroupId}"`);
+  logger.info(`[TodayOccupancy] Resolved WhatsApp group "${whatsappGroupId}" -> ${jid}`);
 
   const result = await sendToChat(jid, {
     document: csvBuffer,

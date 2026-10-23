@@ -11,6 +11,7 @@ const { startT44SalesScheduler } = require('./t44Sales/scheduler');
 const { startT44BusesScheduler } = require('./t44Buses/scheduler');
 const { startTodayOccupancyScheduler } = require('./todayOccupancy/scheduler');
 const { startTrugoReportScheduler } = require('./trugoReport/scheduler');
+const { startOpsOccupancyScheduler } = require('./opsOccupancy/scheduler');
 const logger = require('./utils/logger');
 const config = require('./config');
 
@@ -62,6 +63,7 @@ startT44SalesScheduler();
 startT44BusesScheduler();
 startTodayOccupancyScheduler();
 startTrugoReportScheduler();
+startOpsOccupancyScheduler();
 
 process.on('SIGINT', () => {
   logger.info('Shutting down...');

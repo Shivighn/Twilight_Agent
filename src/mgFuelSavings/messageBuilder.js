@@ -53,14 +53,16 @@ function buildAnomalyMessage(count) {
 /**
  * "MG Fuel Savings as of 15-Sep-26: 3,12,779
  *
+ * Older Pending trips without mileage: 8
+ *
  * @<anil>, @<uday>, @<siva>"
  * Returns { text, mentions } — tags Anil, Uday, and Siva with real
  * WhatsApp mentions. (Indian lakh/crore grouping on the amount.)
  */
-function buildSavingsMessage(totalSavings) {
+function buildSavingsMessage(totalSavings, pendingMileageCount) {
   const amount = Math.round(totalSavings).toLocaleString('en-IN');
   const { tagLine, mentions } = buildTagLine(['anil', 'uday', 'siva']);
-  const text = `MG Fuel Savings as of ${formatTodayIST()}: ${amount}\n\n${tagLine}`;
+  const text = `MG Fuel Savings as of ${formatTodayIST()}: ${amount}\n\nOlder Pending trips without mileage: ${pendingMileageCount}\n\n${tagLine}`;
   return { text, mentions };
 }
 

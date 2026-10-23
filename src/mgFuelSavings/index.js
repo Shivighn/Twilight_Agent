@@ -20,15 +20,15 @@ async function fetchStatus() {
   const { yearMonth, fromISO, toISO } = getCurrentMonthRangeIST();
 
   const totalSavings = await fetchTotalSavings(yearMonth, session);
-  const anomalyCount = await fetchAnomalyCount(fromISO, toISO, session);
+  const { anomalyCount, pendingMileageCount } = await fetchAnomalyCount(fromISO, toISO, session);
 
-  return { yearMonth, totalSavings, anomalyCount };
+  return { yearMonth, totalSavings, anomalyCount, pendingMileageCount };
 }
 
 /** Builds the right message for the current status and sends it. Throws (doesn't swallow) on send failure. */
-async function sendStatus(periodLabel, { anomalyCount, totalSavings }) {
+async function sendStatus(periodLabel, { anomalyCount, totalSavings, pendingMileageCount }) {
   const sendAnomalyMessage = anomalyCount > 0;
-  const content = sendAnomalyMessage ? buildAnomalyMessage(anomalyCount) : buildSavingsMessage(totalSavings);
+  const content = sendAnomalyMessage ? buildAnomalyMessage(anomalyCount) : buildSavingsMessage(totalSavings, pendingMileageCount);
   logger.info(
     `[MgFuelSavings] ${periodLabel} decision: anomalyCount=${anomalyCount}, totalSavings=${totalSavings} -> sending ${
       sendAnomalyMessage ? 'anomaly' : 'savings'

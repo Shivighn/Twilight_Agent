@@ -185,6 +185,17 @@ const config = {
     dayOfWeek: process.env.TRUGO_REPORT_DAY_OF_WEEK || '1',
     whatsappGroupId: process.env.TRUGO_REPORT_WHATSAPP_GROUP_ID || 'Agent Test',
   },
+  // Daily Flix/IntrCity/Zing-only Redbus occupancy snapshot — runs the
+  // existing opsOccupancy.py (repo root, untouched) as a child process and
+  // sends BOTH the CSV it writes and the slot-count PNG it renders. Distinct
+  // from todayOccupancy above, which covers every operator, not just these three.
+  opsOccupancy: {
+    enabled: (process.env.OPS_OCCUPANCY_ENABLED || 'false').toLowerCase() === 'true',
+    timezone: 'Asia/Kolkata',
+    runTime: process.env.OPS_OCCUPANCY_RUN_TIME || '12:40', // HH:mm, interpreted in `timezone`
+    pythonBin: process.env.OPS_OCCUPANCY_PYTHON_BIN || 'python3',
+    whatsappGroupId: process.env.OPS_OCCUPANCY_WHATSAPP_GROUP_ID || 'Agent Test',
+  },
 };
 
 module.exports = config;

@@ -16,7 +16,8 @@
     "t44-sales:run": "node scripts/run-t44-sales-once.js",
     "t44-buses:run": "node scripts/run-t44-buses-once.js",
     "today-occupancy:run": "node scripts/run-today-occupancy-once.js",
-    "trugo-report:run": "node scripts/run-trugo-report-once.js"
+    "trugo-report:run": "node scripts/run-trugo-report-once.js",
+    "ops-occupancy:run": "node scripts/run-ops-occupancy-once.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

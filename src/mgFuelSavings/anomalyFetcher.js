@@ -20,7 +20,12 @@ function isAnomaly(row) {
   return mileage < MIN_NORMAL_MILEAGE || mileage > MAX_NORMAL_MILEAGE;
 }
 
-/** Count of anomalous trips (see isAnomaly) between fromISO and toISO. */
+/** A trip whose mileage hasn't been calculated yet (seen in the wild as `reason: "PENDING_MILEAGE"`, but mileage being null/undefined is the actual signal checked). */
+function isPendingMileage(row) {
+  return row.calculated_mileage === null || row.calculated_mileage === undefined;
+}
+
+/** { anomalyCount, pendingMileageCount } between fromISO and toISO — one fetch, two counts over the same rows. */
 async function fetchAnomalyCount(fromISO, toISO, session) {
   const url = `${config.mgFuelSavings.apiBaseUrl}/fuel-sorting-page/anomalies`;
   logger.info(`[MgFuelSavings] Fetching anomalies — GET ${url}?from=${fromISO}&to=${toISO}`);
@@ -46,8 +51,11 @@ async function fetchAnomalyCount(fromISO, toISO, session) {
   }
 
   const anomalyCount = response.data.filter(isAnomaly).length;
-  logger.info(`[MgFuelSavings] Anomalies: ${response.data.length} trip(s) in range, ${anomalyCount} anomalous`);
-  return anomalyCount;
+  const pendingMileageCount = response.data.filter(isPendingMileage).length;
+  logger.info(
+    `[MgFuelSavings] Trips: ${response.data.length} in range, ${anomalyCount} anomalous, ${pendingMileageCount} pending mileage`
+  );
+  return { anomalyCount, pendingMileageCount };
 }
 
-module.exports = { fetchAnomalyCount, isAnomaly };
+module.exports = { fetchAnomalyCount, isAnomaly, isPendingMileage };
