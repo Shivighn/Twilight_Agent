@@ -32,5 +32,20 @@ class Config:
     supabase_url: str = _require("SUPABASE_URL")
     supabase_service_role_key: str = _require("SUPABASE_SERVICE_ROLE_KEY")
 
+    # Petpooja Captain Order Automation — see
+    # docs/PETPOOJA_CAPTAIN_ORDER_AUTOMATION.md. Off by default: a bad/
+    # incomplete config here must never start intercepting messages until
+    # someone deliberately turns it on, same reasoning as every Node-side
+    # feature flag in src/config/index.js.
+    petpooja_orders_enabled: bool = os.getenv("PETPOOJA_ORDERS_ENABLED", "false").lower() == "true"
+    petpooja_orders_whatsapp_group_name: str = os.getenv("PETPOOJA_ORDERS_WHATSAPP_GROUP_NAME", "")
+    petpooja_order_provider: str = os.getenv("PETPOOJA_ORDER_PROVIDER", "mock")
+
+    # petpooja_captain_orders lives in its OWN Supabase project — separate
+    # from SUPABASE_URL above (which every other feature shares) — falls
+    # back to the same project only if no dedicated one is configured.
+    petpooja_supabase_url: str = os.getenv("PETPOOJA_SUPABASE_URL", "") or os.getenv("SUPABASE_URL", "")
+    petpooja_supabase_service_role_key: str = os.getenv("PETPOOJA_SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
 
 config = Config()

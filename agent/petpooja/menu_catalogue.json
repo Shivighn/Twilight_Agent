@@ -1,0 +1,15 @@
+{
+  "_comment": "Starter catalogue for dry-run testing. Edit freely — no code change needed, the tool reloads this file on every message. 'itemid' is a PLACEHOLDER until the real Petpooja Menu Fetch API is integrated (Phase 2) — it only matters once RealPetpoojaOrderProvider exists.",
+  "items": [
+    { "itemid": "P-1001", "name": "Chicken Biryani", "aliases": ["chicken biriyani", "chicken briyani", "ckn biryani"], "price": 220 },
+    { "itemid": "P-1002", "name": "Chicken Biryani Family Pack", "aliases": ["chicken biryani family", "family pack chicken biryani"], "price": 650 },
+    { "itemid": "P-1003", "name": "Veg Biryani", "aliases": ["vegetable biryani", "veg briyani"], "price": 180 },
+    { "itemid": "P-1004", "name": "Roti", "aliases": ["chapati", "chapathi"], "price": 15 },
+    { "itemid": "P-1005", "name": "Butter Naan", "aliases": ["naan", "butter nan"], "price": 30 },
+    { "itemid": "P-1006", "name": "Paneer Butter Masala", "aliases": ["paneer masala", "paneer butter"], "price": 180 },
+    { "itemid": "P-1007", "name": "Chicken 65", "aliases": ["chicken sixty five", "ckn 65"], "price": 160 },
+    { "itemid": "P-1008", "name": "Curd Rice", "aliases": ["curd rice", "yogurt rice"], "price": 100 },
+    { "itemid": "P-1009", "name": "Gulab Jamun", "aliases": ["gulab jamoon"], "price": 40 },
+    { "itemid": "P-1010", "name": "Water Bottle", "aliases": ["water", "mineral water", "bisleri"], "price": 20 }
+  ]
+}

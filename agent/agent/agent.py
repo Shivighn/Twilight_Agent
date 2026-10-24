@@ -2,6 +2,7 @@ from loguru import logger
 from media.pdf_parser import extract_text_from_pdf
 from llm.llm_client import chat_with_tools
 from agent.tool_registry import registry
+from config import config
 
 SYSTEM_PROMPT = """You are an AI agent for a company. You receive documents (bills, invoices, receipts, reports, etc.)
 sent via WhatsApp. Based on the document content, choose the most appropriate tool to process it.
@@ -50,9 +51,27 @@ async def run(file_path: str, media_type: str, message_id: str, caption: str = "
         return {"success": True, "tool": "extract_petty_cash", "result": result}
 
     if media_type == "text":
-        # Plain text messages: let LLM reason and pick the right tool
         text = caption
         context["text"] = text
+
+        # Dedicated-group bypass — same shape as the "image" branch above:
+        # the Petpooja orders group is deterministic (chat_name-based), not
+        # LLM-routed, so an order message can never be mis-classified as a
+        # petty-cash/opening-balance command and vice versa. See
+        # docs/PETPOOJA_CAPTAIN_ORDER_AUTOMATION.md section 2.
+        if (
+            config.petpooja_orders_enabled
+            and config.petpooja_orders_whatsapp_group_name
+            and chat_name == config.petpooja_orders_whatsapp_group_name
+        ):
+            tool = registry.get("petpooja_captain_order")
+            if not tool:
+                raise ValueError("petpooja_captain_order tool is not registered")
+            logger.info(f"[Agent] Text in configured Petpooja orders group '{chat_name}' — using petpooja_captain_order directly")
+            result = await tool.execute({}, context)
+            return {"success": True, "tool": "petpooja_captain_order", "result": result}
+
+        # Plain text messages: let LLM reason and pick the right tool
         tools = registry.to_llm_tools()
         logger.info(f"[Agent] Text message — available tools: {registry.list_names()}")
         decision = await chat_with_tools(TEXT_SYSTEM_PROMPT, f"Message:\n{text}", tools)
