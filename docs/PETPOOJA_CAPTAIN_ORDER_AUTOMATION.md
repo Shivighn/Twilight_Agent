@@ -10,7 +10,7 @@ This repo is already split into two services (see `README.md`):
   to monitored groups, forwards every message to the agent, relays the
   agent's reply back into the chat. Doesn't understand message content.
 - **Agent** (`agent/`, Python + FastAPI) — owns understanding. `POST /process`
-  receives `{ media_type, message_id, caption, chat_name }` and
+  receives `{ media_type, message_id, caption, chat_name, sender }` and
   `agent/agent/agent.py::run()` either calls one fixed tool directly (images
   always go to `extract_petty_cash`) or lets an LLM pick a tool from
   `agent/agent/tool_registry.py` (text messages). Each **tool**
@@ -31,7 +31,7 @@ Node Gateway (src/) — UNCHANGED
   • isMonitored(chatName) already passes any group listed in
     WA_MONITORED_CHATS through to POST /process
   • message.type === 'chat' branch already forwards
-    { message_id, caption, chat_name } and already relays
+    { message_id, caption, chat_name, sender } and already relays
     outcome.result.reply back into the chat — this is the EXACT
     mechanism set_opening_balance already uses for text replies
         │  HTTP POST /process
@@ -48,7 +48,7 @@ agent/agent/agent.py :: run()  — ONE NEW BRANCH
         ▼
 agent/tools/petpooja_captain_order_tool.py  — NEW TOOL
   1. Idempotent insert keyed on whatsapp_message_id
-  2. Rule-based parse (vehicle number, passenger count, items)
+  2. Rule-based parse (bus number, passenger count, items)
   3. Menu match against a configurable catalogue
   4. If anything is missing/ambiguous → needs_review, STOP
   5. Else → PetpoojaOrderProvider.create_order() (mock today)
@@ -78,7 +78,7 @@ agent/
   tools/
     petpooja_captain_order_tool.py   # the BaseTool — parse/match/validate/persist/call-provider
   petpooja/
-    order_parser.py                  # vehicle number / passenger count / item-line regex parsing
+    order_parser.py                  # bus number / passenger count / item-line regex parsing
     menu_catalogue.py                # loads + queries the configurable menu catalogue
     menu_catalogue.json              # the catalogue itself — canonical name, aliases, Petpooja itemid
   providers/
@@ -139,17 +139,29 @@ same convention as `migrations/2026-08-12_fleet_issue_agent.sql`.
 ```sql
 -- Petpooja Captain Order Automation
 -- See docs/PETPOOJA_CAPTAIN_ORDER_AUTOMATION.md for the full design.
+-- Current shape, after migrations/2026-10-23_...sql and
+-- 2026-10-24_..._schema_update.sql (chat_name dropped — this table is
+-- scoped to exactly one configured WhatsApp group, so it was the same
+-- constant on every row; vehicle_number renamed to bus_number;
+-- parsing_status/petpooja_status converted to enums; provider_mode
+-- dropped — written but never read/branched on; attempt_count+max_attempts
+-- merged into attempts_made, capped at 5; next_attempt_at dropped since the
+-- retry sweep it was for was never built).
 
 create extension if not exists pgcrypto;
 
+create type petpooja_parsing_status_enum as enum
+  ('pending', 'parsed', 'needs_review', 'parse_failed');
+create type petpooja_order_status_enum as enum
+  ('not_submitted', 'pending', 'creating', 'created', 'failed', 'manual_review');
+
 -- One row per WhatsApp message in the dedicated orders group. Doubles as:
---   1. the inbound message log (raw_text/chat_name/sender/received_at)
---   2. the parsed order (vehicle_number/passenger_count/order_items)
+--   1. the inbound message log (raw_text/sender/received_at)
+--   2. the parsed order (bus_number/passenger_count/order_items)
 --   3. the idempotency guard (unique on whatsapp_message_id — a redelivered
 --      message, or a retry after a crash mid-flow, can never create a
 --      second Petpooja order for the same message)
---   4. the outbox/job queue (petpooja_status + attempt bookkeeping below),
---      polled by the background retry sweep described in §5
+--   4. the outbox/job queue (petpooja_status + attempts_made below)
 --   5. the Petpooja response/audit log (petpooja_order_id/petpooja_response)
 create table if not exists petpooja_captain_orders (
   id uuid primary key default gen_random_uuid(),
@@ -157,14 +169,15 @@ create table if not exists petpooja_captain_orders (
   -- Idempotency anchor. Required: a message with no id can't be a real
   -- WhatsApp message in this pipeline.
   whatsapp_message_id text not null,
-  chat_name text not null,
+  -- WhatsApp sender JID (group participant, or the chat JID itself for a
+  -- 1:1 message) — read from Baileys' raw.key.participant/remoteJid.
   sender text,
   raw_text text not null,
   received_at timestamptz not null default now(),
 
   -- Parsed order. All nullable — a partially-parsed message is still a
   -- valid row (it just ends up needs_review instead of parsed).
-  vehicle_number text,
+  bus_number text,
   passenger_count integer,
 
   -- [{ raw_name, quantity, matched_item_id, matched_item_name,
@@ -172,26 +185,24 @@ create table if not exists petpooja_captain_orders (
   -- One element per item line in the message, in message order.
   order_items jsonb not null default '[]',
 
-  -- 'pending' (just inserted, not parsed yet) | 'parsed' (vehicle + passenger
-  -- count + every item matched) | 'needs_review' (something's missing or
-  -- ambiguous — a human must look at it) | 'parse_failed' (parser itself
-  -- threw — message didn't look like an order at all)
-  parsing_status text not null default 'pending',
+  -- 'pending' (just inserted, not parsed yet) | 'parsed' (bus number +
+  -- passenger count + every item matched) | 'needs_review' (something's
+  -- missing or ambiguous — a human must look at it) | 'parse_failed'
+  -- (parser itself threw — message didn't look like an order at all)
+  parsing_status petpooja_parsing_status_enum not null default 'pending',
   validation_notes text, -- human-readable reason when needs_review/parse_failed
 
   -- Petpooja side. 'not_submitted' is the resting state for anything that
   -- never got past parsing (needs_review/parse_failed never reach Petpooja —
   -- requirement 3: flag, never guess).
-  petpooja_status text not null default 'not_submitted',
-  -- 'not_submitted' | 'pending' | 'creating' | 'created' | 'failed' | 'manual_review'
+  petpooja_status petpooja_order_status_enum not null default 'not_submitted',
   petpooja_order_id text,
   petpooja_response jsonb,
-  provider_mode text not null default 'mock', -- 'mock' | 'real' — which provider handled this row
 
-  -- Bounded retry / outbox bookkeeping (requirement 5).
-  attempt_count integer not null default 0,
-  max_attempts integer not null default 5,
-  next_attempt_at timestamptz,
+  -- Bounded retry / outbox bookkeeping (requirement 5). Hard-capped at 5
+  -- by the check constraint below; application code must never write past it.
+  attempts_made integer not null default 0
+    constraint petpooja_captain_orders_attempts_made_check check (attempts_made >= 0 and attempts_made <= 5),
   last_attempt_at timestamptz,
   last_error text,
 
@@ -205,37 +216,31 @@ create table if not exists petpooja_captain_orders (
   constraint petpooja_captain_orders_message_id_key unique (whatsapp_message_id)
 );
 
--- The retry sweep's own query shape — see §5. Partial index keeps it cheap
--- forever regardless of how many "created"/"manual_review" rows pile up.
-create index if not exists petpooja_captain_orders_retry_idx
-  on petpooja_captain_orders (next_attempt_at)
-  where petpooja_status = 'failed';
-
 -- Needs-review queue for the future dashboard / manual follow-up.
 create index if not exists petpooja_captain_orders_review_idx
   on petpooja_captain_orders (received_at)
   where parsing_status = 'needs_review';
 
--- Dashboard's main listing query: "today's orders for this restaurant group".
-create index if not exists petpooja_captain_orders_chat_time_idx
-  on petpooja_captain_orders (chat_name, received_at desc);
+-- Dashboard's main listing query: "today's orders", newest first — no
+-- per-group column needed any more, the whole table is one group.
+create index if not exists petpooja_captain_orders_received_idx
+  on petpooja_captain_orders (received_at desc);
 ```
 
 ### Why these columns specifically answer requirement 4
 
-- *Incoming messages:* `whatsapp_message_id`, `chat_name`, `sender`,
-  `raw_text`, `received_at`.
-- *Parsed orders:* `vehicle_number`, `passenger_count`, `parsing_status`,
+- *Incoming messages:* `whatsapp_message_id`, `sender`, `raw_text`,
+  `received_at`.
+- *Parsed orders:* `bus_number`, `passenger_count`, `parsing_status`,
   `validation_notes`.
 - *Order items:* `order_items` (jsonb array, one element per line item,
   including its match outcome).
-- *Petpooja order IDs/responses:* `petpooja_order_id`, `petpooja_response`,
-  `provider_mode`.
-- *Processing attempts:* `attempt_count`, `max_attempts`, `next_attempt_at`,
-  `last_attempt_at`, `last_error`.
+- *Petpooja order IDs/responses:* `petpooja_order_id`, `petpooja_response`.
+- *Processing attempts:* `attempts_made` (capped at 5), `last_attempt_at`,
+  `last_error`.
 - *Future dashboard/reconciliation:* every field above is queryable directly;
-  the three indexes cover the three real query shapes (retry sweep,
-  needs-review queue, per-group timeline) without needing a join anywhere.
+  the two indexes cover the two real query shapes (needs-review queue,
+  chronological timeline) without needing a join anywhere.
 
 ---
 
@@ -244,9 +249,11 @@ create index if not exists petpooja_captain_orders_chat_time_idx
 ### 5.1 Synchronous path (one WhatsApp message)
 
 1. Driver sends a message to the dedicated orders group.
-2. Node gateway (unchanged) — `isMonitored()` passes it through, downloads
-   nothing (it's `message.type === 'chat'`), `POST /process` with
-   `{ media_type: "text", message_id, caption: text, chat_name }`.
+2. Node gateway — `isMonitored()` passes it through, downloads nothing
+   (it's `message.type === 'chat'`), `POST /process` with
+   `{ media_type: "text", message_id, caption: text, chat_name, sender }`
+   (`sender` is the Baileys group participant JID, or the chat JID itself
+   for a 1:1 message — see `src/whatsapp/client.js`'s `adaptMessage()`).
 3. `agent.py::run()` — chat_name matches the configured orders group →
    call `petpooja_captain_order` tool directly, skip LLM tool-selection
    entirely (same bypass shape the `image` branch already uses).
@@ -263,7 +270,7 @@ create index if not exists petpooja_captain_orders_chat_time_idx
       "never blindly retry... reconcile first" from requirement 5, applied at
       the cheapest possible point: before any work happens at all.
    2. **Parse** (`order_parser.py`, pure regex/rules, no LLM call):
-      - Vehicle number: Indian plate pattern (`[A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,3}\s?\d{4}`),
+      - Bus number: Indian plate pattern (`[A-Z]{2}\s?\d{1,2}\s?[A-Z]{1,3}\s?\d{4}`),
         normalized the same way T44 bus numbers already are in this repo
         (uppercase, strip spaces — see `normalize_bus_number` in
         `scripts/t44_ac_sales_report.py`, same idea, same reason: "AP39UX7896"
@@ -275,7 +282,7 @@ create index if not exists petpooja_captain_orders_chat_time_idx
       - Item lines: splits the remainder on commas/newlines, each line →
         `{ quantity, raw_name }` via a leading-number pattern
         (`2 Roti` → qty 2; `Chicken Biryani` with no number → qty 1).
-      - If the message doesn't parse into *any* vehicle number — it almost
+      - If the message doesn't parse into *any* bus number — it almost
         certainly isn't an order at all (e.g. chit-chat in the group) —
         `parsing_status = 'parse_failed'`, no reply sent (silently ignored,
         same as any message an existing tool doesn't recognize), done.
@@ -284,13 +291,20 @@ create index if not exists petpooja_captain_orders_chat_time_idx
       - Exact match against canonical name or any configured alias →
         `matched`.
       - Otherwise, deterministic token-overlap scoring against the
-        catalogue (no fuzzy-matching library needed for Phase 1 — see
-        [§11](#11-testing-strategy) for why this is testable without one);
-        a single candidate clearing the confidence threshold → `matched`;
-        more than one clearing it → `ambiguous`; none → `unmatched`.
+        catalogue; a single candidate clearing the confidence threshold →
+        `matched`; more than one clearing it → `ambiguous`; none →
+        `unmatched`.
+      - Anything still `unmatched`/`ambiguous` after the rule-based pass
+        goes to a second, LLM-based pass (`match_items_llm()`, same free
+        NVIDIA/OpenRouter chain the petty-cash tool uses) that handles
+        misspelled/phonetic item names ("chckn biryni" → Chicken Biryani)
+        no fixed alias list could enumerate in advance. It's pinned to the
+        catalogue's own ids (can never invent an item), and a failed/bad
+        LLM response just keeps the rule-based `unmatched`/`ambiguous`
+        result — it never silently guesses.
       - `ambiguous`/`unmatched` items are **never guessed** — requirement 3
         is explicit about this.
-   4. **Validate.** If vehicle number is missing, OR passenger count is
+   4. **Validate.** If bus number is missing, OR passenger count is
       missing, OR any item is `ambiguous`/`unmatched` →
       `parsing_status = 'needs_review'`, build a specific reply (e.g. "⚠️
       Could not confirm: *Chiken Biryani* (did you mean Chicken Biryani or
@@ -304,9 +318,10 @@ create index if not exists petpooja_captain_orders_chat_time_idx
         `petpooja_order_id`/`petpooja_response`, reply confirms
         ("✅ Order sent to kitchen for *AP39UX7896* — 1 Chicken Biryani, 2
         Roti").
-      - Failure/timeout → `petpooja_status = 'failed'`, `attempt_count += 1`,
-        `next_attempt_at = now() + backoff(attempt_count)`, `last_error`
-        set. If `attempt_count >= max_attempts` → `petpooja_status =
+      - Failure/timeout → `petpooja_status = 'failed'`, `attempts_made`
+        incremented (capped at 5 by the DB check constraint — application
+        code must mirror that cap, never write past it), `last_error` set.
+        If `attempts_made` has reached 5 → `petpooja_status =
         'manual_review'` instead, and the reply says so plainly rather than
         implying it'll silently retry forever. Otherwise the reply says the
         order is queued and will be retried — **not** a bare error, since
@@ -327,10 +342,16 @@ satisfying requirement 6's "graceful startup/shutdown"). Every
 ```sql
 select * from petpooja_captain_orders
 where petpooja_status = 'failed'
-  and next_attempt_at <= now()
-order by next_attempt_at
+  and attempts_made < 5
+  and last_attempt_at <= now() - backoff_interval(attempts_made)
+order by last_attempt_at
 limit 20;
 ```
+
+(`backoff_interval()` is whatever exponential/fixed backoff function the
+sweep implementation picks — there's no `next_attempt_at` column to
+pre-compute it into any more, so the sweep derives the "due" check from
+`attempts_made`/`last_attempt_at` directly at query time instead.)
 
 For each row: **reconcile before retrying** — call
 `provider.get_order_status(row)` first if the provider supports it (the
@@ -457,7 +478,7 @@ inert" pattern every other feature in this repo uses (e.g.
 | Scenario | Handling |
 |---|---|
 | Duplicate/redelivered WhatsApp message | Unique `whatsapp_message_id` — second insert finds the existing row, returns its stored `reply_sent` unchanged, never re-calls Petpooja. |
-| Message isn't an order at all (chit-chat in the group) | No vehicle number parses → `parse_failed`, no reply sent — same "silently ignored" behavior as any unrecognized text today. |
+| Message isn't an order at all (chit-chat in the group) | No bus number parses → `parse_failed`, no reply sent — same "silently ignored" behavior as any unrecognized text today. |
 | Item name typo / genuinely ambiguous (two menu items both plausible) | `needs_review`, specific reply naming the unclear item(s), Petpooja never called. |
 | Menu item genuinely not on the catalogue | `unmatched` → `needs_review` — never created with a guessed item. |
 | Petpooja API times out, request may have actually succeeded | Never retried blindly — `get_order_status()` reconciliation is called first on the next sweep pass; only creates if genuinely not found. |
@@ -477,11 +498,13 @@ inert" pattern every other feature in this repo uses (e.g.
 - `agent/db.py`'s existing guardrail (no `DELETE`, no `/rpc/`) applies
   unchanged — this tool only ever `INSERT`/`UPDATE`s one table via the same
   client, nothing new to audit there.
-- No new PII is introduced beyond what's already in the WhatsApp message
-  itself (vehicle number, driver headcount) — no customer names/phones/
-  addresses are handled by this pipeline (that's the *inbound Petpooja
-  order's* delivery-customer fields per `ordersapidummydocs.md`, and this
-  flow is Dine-in/Captain-side, not delivery, so those fields don't apply).
+- `sender` (the driver's WhatsApp JID/phone number) is the one real PII field
+  this table stores — it's needed to know who sent a given order, and is
+  never forwarded to Petpooja (`petpooja_payload.py` sends a placeholder
+  customer phone, not `sender`). No other customer names/phones/addresses
+  are handled by this pipeline (that's the *inbound Petpooja order's*
+  delivery-customer fields per `ordersapidummydocs.md`, and this flow is
+  Dine-in/Captain-side, not delivery, so those fields don't apply).
 - Once real webhooks are added (Phase 3, outbound status updates from
   Petpooja), they must be signature-verified before being trusted — Petpooja's
   real docs will specify the mechanism; nothing is assumed here.
@@ -537,24 +560,26 @@ test script; `agent/requirements.txt` has no `pytest`). Rather than pull in a
 new framework for one feature, Phase 1 should add Python's built-in
 `unittest` (zero new dependency) for:
 
-- **Parser (`order_parser.py`):** vehicle-number formats (with/without
+- **Parser (`order_parser.py`):** bus-number formats (with/without
   spaces, lowercase), passenger-count phrasing variants, multi-item lines,
-  missing-vehicle messages (→ `parse_failed`), trailing punctuation/emoji
+  missing-bus-number messages (→ `parse_failed`), trailing punctuation/emoji
   noise.
 - **Menu matching (`menu_catalogue.py`):** exact match, alias match,
   deterministic token-overlap match, genuinely ambiguous (two items clear
   threshold) → `ambiguous`, nothing clears threshold → `unmatched`. Because
-  matching is rule-based (no LLM, no network call), this is fully
-  deterministic and fast to test exhaustively — this is also the practical
-  argument for *not* reaching for a fuzzy-matching library in Phase 1: every
-  match decision needs to be explainable and reproducible in a test, which a
-  hand-rolled scorer makes trivial and a black-box fuzzy library makes
-  harder to pin down.
+  the rule-based pass is deterministic (no LLM, no network call), it's fast
+  to test exhaustively — every decision is explainable and reproducible.
+  The LLM fallback (`match_items_llm()`) is the one place genuinely hard to
+  unit-test deterministically (real network call, non-deterministic model
+  output); test it by mocking `llm.llm_client.generate` to return both
+  well-formed and malformed JSON, confirming the malformed case falls back
+  to the rule-based `unmatched`/`ambiguous` result rather than raising past
+  the caller.
 - **Idempotency:** inserting the same `whatsapp_message_id` twice returns the
   first row's stored reply both times, never calls the provider twice —
   testable against a real Supabase test table or a mocked `db.py`.
-- **Retry/backoff:** attempt_count → next_attempt_at progression, and the
-  `max_attempts` → `manual_review` transition.
+- **Retry/backoff:** `attempts_made` incrementing up to its cap of 5, and the
+  5th failure's transition to `manual_review`.
 - **Provider failures:** `MockPetpoojaOrderProvider` configured to raise, to
   verify the tool's try/except path sets `failed`/bookkeeping correctly
   rather than crashing the whole `/process` request.

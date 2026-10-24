@@ -2,13 +2,24 @@
 Configurable menu catalogue — see docs/PETPOOJA_CAPTAIN_ORDER_AUTOMATION.md
 section 4 for why this is a JSON file and not a Supabase table.
 
-Matching is deliberately rule-based (no fuzzy-matching library, no LLM) —
-every decision is explainable and exhaustively testable. See match_item()'s
-docstring for the exact rule.
+match_item() is deliberately rule-based (no fuzzy-matching library, no LLM)
+— exact/alias/token-overlap only, every decision explainable and
+exhaustively testable. See its docstring for the exact rule.
+
+match_items_llm() is the fallback for what match_item() can't handle:
+drivers typing phonetic/misspelled item names ("chckn biryni", "chickn
+bryani", "biry" for "Chicken Biryani") that no fixed alias list can
+enumerate in advance. It's only called on lines match_item() already
+marked unmatched/ambiguous, kept strictly pinned to the catalogue's own
+ids (never allowed to invent an item), and callers must still fall back to
+the rule-based unmatched/ambiguous result if it fails — see
+petpooja_captain_order_tool.py.
 """
 import json
 import os
 import re
+
+from llm.llm_client import generate
 
 _CATALOGUE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "menu_catalogue.json")
 
@@ -92,6 +103,7 @@ def match_item(raw_name: str, catalogue: list[dict]) -> dict:
             "raw_name": raw_name,
             "matched_item_id": chosen["itemid"],
             "matched_item_name": chosen["name"],
+            "price": chosen.get("price", 0),
             "match_status": "matched",
             "match_confidence": 1.0,
         }
@@ -117,6 +129,7 @@ def match_item(raw_name: str, catalogue: list[dict]) -> dict:
             "raw_name": raw_name,
             "matched_item_id": chosen["itemid"],
             "matched_item_name": chosen["name"],
+            "price": chosen.get("price", 0),
             "match_status": "matched",
             "match_confidence": _MATCH_THRESHOLD,
         }
@@ -136,3 +149,130 @@ def match_item(raw_name: str, catalogue: list[dict]) -> dict:
         "match_status": "unmatched",
         "match_confidence": None,
     }
+
+
+_LLM_MATCH_PROMPT = """You are matching item names that truck/van drivers typed on WhatsApp — often misspelled or phonetic — to the EXACT items on a restaurant's menu.
+
+MENU (the ONLY valid items — never return an id that is not listed here):
+{menu_lines}
+
+Drivers misspell or guess phonetically, e.g. "chckn biryni", "chickn bryani", "chicken biriyani", "biry" can all mean "Chicken Biryani". Use that kind of judgment.
+
+ITEMS TO MATCH, in order:
+{item_lines}
+
+Rules:
+- If a raw name clearly means exactly one menu item (even badly misspelled), match it.
+- If a raw name could plausibly mean more than one distinct menu item, match_status is "ambiguous" and "candidates" lists those item ids.
+- If a raw name doesn't resemble any menu item, match_status is "unmatched" and matched_item_id is null. Never force a match.
+- matched_item_id must be exactly one of the ids listed in MENU above, or null.
+
+Return ONLY a JSON array (no markdown, no explanation), one object per input line IN THE SAME ORDER:
+[{{"raw_name": "<copied exactly from the input line>", "matched_item_id": "<id from MENU or null>", "match_status": "matched" | "ambiguous" | "unmatched", "candidates": ["<id>", ...]}}]
+
+JSON:"""
+
+
+def _extract_json_array(raw: str, expected_len: int) -> list:
+    """
+    Pulls the answer JSON array out of a reasoning model's response, which
+    may still contain unstripped chain-of-thought text (e.g. an unclosed
+    <think> block that ran past the token budget, or prose that echoes
+    bits of the prompt before the real answer). A naive "first [ to last
+    ]" scan is fooled by any bracket in that leftover text, so instead:
+    drop anything after an unclosed <think>, find every TOP-LEVEL
+    bracket-balanced [...] span, and try each from last to first (the
+    real answer is normally what the model settles on at the end),
+    accepting the first one that parses into a list of exactly
+    `expected_len` dicts each containing "raw_name".
+    """
+    cleaned = re.sub(r"<think>.*", "", raw, flags=re.DOTALL)
+    cleaned = re.sub(r"```json\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"```", "", cleaned).strip()
+
+    candidates, stack = [], []
+    for i, ch in enumerate(cleaned):
+        if ch == "[":
+            stack.append(i)
+        elif ch == "]" and stack:
+            start = stack.pop()
+            if not stack:  # only a fully-closed, top-level span
+                candidates.append(cleaned[start : i + 1])
+
+    for candidate in reversed(candidates):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if (
+            isinstance(parsed, list)
+            and len(parsed) == expected_len
+            and all(isinstance(x, dict) and "raw_name" in x for x in parsed)
+        ):
+            return parsed
+
+    raise ValueError(f"LLM did not return a usable {expected_len}-item JSON array:\n{raw[:2000]}")
+
+
+async def match_items_llm(unresolved: list[dict], catalogue: list[dict]) -> list[dict]:
+    """
+    Resolves raw item names match_item() marked unmatched/ambiguous, using
+    the same free LLM endpoints the petty-cash extractor uses (see
+    llm/llm_client.py). `unresolved` is a list of match_item()'s own output
+    dicts (so this reads raw_name back off them) and the return shape
+    matches match_item()'s — callers overlay these onto the originals by
+    index. Raises on any malformed/mismatched LLM response; callers must
+    catch and keep the original rule-based result rather than let a bad
+    LLM response silently produce a wrong order.
+    """
+    # Plain "a, b, c" aliases, not a Python list repr — a reasoning model's
+    # chain-of-thought tends to echo parts of the prompt back before its
+    # answer, and square brackets in the MENU listing collided with
+    # _extract_json_array's bracket-matching below (confirmed: produced an
+    # 11-item "array" out of the menu listing itself for a single-item ask).
+    menu_lines = "\n".join(
+        f"- id={item['itemid']} name=\"{item['name']}\" aliases: {', '.join(item.get('aliases', [])) or 'none'}"
+        for item in catalogue
+    )
+    item_lines = "\n".join(f"{i + 1}. {m['raw_name']}" for i, m in enumerate(unresolved))
+    prompt = _LLM_MATCH_PROMPT.format(menu_lines=menu_lines, item_lines=item_lines)
+
+    raw = await generate(prompt)
+    results = _extract_json_array(raw, expected_len=len(unresolved))
+
+    by_id = {item["itemid"]: item for item in catalogue}
+    resolved = []
+    for original, result in zip(unresolved, results):
+        status = result.get("match_status")
+        item_id = result.get("matched_item_id")
+        if status == "matched" and item_id in by_id:
+            item = by_id[item_id]
+            resolved.append({
+                "raw_name": original["raw_name"],
+                "matched_item_id": item["itemid"],
+                "matched_item_name": item["name"],
+                "price": item.get("price", 0),
+                "match_status": "matched",
+                "match_confidence": 0.85,
+            })
+        elif status == "ambiguous":
+            candidate_names = [by_id[c]["name"] for c in (result.get("candidates") or []) if c in by_id]
+            resolved.append({
+                "raw_name": original["raw_name"],
+                "matched_item_id": None,
+                "matched_item_name": None,
+                "match_status": "ambiguous",
+                "match_confidence": None,
+                "candidates": candidate_names or [item["name"] for item in catalogue],
+            })
+        else:
+            # Covers "unmatched" and any malformed/unrecognized status — never
+            # guess, fall back to the safest outcome (needs_review).
+            resolved.append({
+                "raw_name": original["raw_name"],
+                "matched_item_id": None,
+                "matched_item_name": None,
+                "match_status": "unmatched",
+                "match_confidence": None,
+            })
+    return resolved

@@ -4,6 +4,12 @@
 -- Run this against the target Supabase project (main FleetZen project,
 -- fpmfqdhyfclwtpqhhhtp) via the SQL editor or `psql`. Safe to re-run
 -- (`if not exists` throughout).
+--
+-- NOTE: superseded in part by 2026-10-24_petpooja_captain_orders_schema_update.sql
+-- (chat_name/provider_mode/next_attempt_at dropped, vehicle_number renamed
+-- to bus_number, attempt_count+max_attempts merged into attempts_made,
+-- parsing_status/petpooja_status converted to enums) — this file is kept
+-- as-is for history; run both in order on a fresh project.
 
 create extension if not exists pgcrypto;
 

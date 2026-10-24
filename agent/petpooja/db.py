@@ -74,6 +74,22 @@ async def upsert(table: str, data: dict, on_conflict: str) -> _Result:
         return _Result(r.json())
 
 
+async def update(table: str, filters: dict, patch: dict) -> _Result:
+    """PATCH rows matching `filters` (raw PostgREST operators, e.g.
+    {"whatsapp_message_id": "eq.xyz"}) with `patch`. Unlike upsert(), this
+    is a true partial update — it never re-validates NOT NULL columns the
+    caller doesn't mention, because PostgREST's upsert-via-POST path
+    re-runs the full INSERT's constraint check even when a conflict would
+    resolve it (confirmed: omitting raw_text on a later write failed NOT
+    NULL before conflict resolution ever ran). Every write after the
+    initial insert_ignore() claim must use this, not upsert()."""
+    headers = {**_HEADERS, "Prefer": "return=representation"}
+    async with _client() as client:
+        r = await client.patch(f"{_BASE}/{table}", headers=headers, params=filters, json=patch)
+        r.raise_for_status()
+        return _Result(r.json())
+
+
 async def insert_ignore(table: str, data: dict, on_conflict: str) -> _Result:
     """INSERT, doing nothing if on_conflict's column already has a matching
     row — see ../db.py's insert_ignore for why this (not upsert) is the

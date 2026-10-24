@@ -88,6 +88,10 @@ function adaptMessage(raw) {
     fromMe: !!raw.key.fromMe,
     hasMedia: type === 'image' || type === 'document',
     id: { id: raw.key.id },
+    // In a group, participant is the actual sender's JID (remoteJid is the
+    // group's own JID there); in a 1:1 chat there's no participant field,
+    // so remoteJid IS the sender.
+    sender: raw.key.participant || raw.key.remoteJid,
 
     async getChat() {
       return { name: await resolveChatName(jid), id: { user: jid.split('@')[0] } };

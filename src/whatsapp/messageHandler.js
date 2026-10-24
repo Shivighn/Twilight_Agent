@@ -41,6 +41,7 @@ async function processJob(job) {
       message_id: message.id.id,
       caption: message.body || '',
       chat_name: chatName,
+      sender: message.sender || '',
     }, { timeout: config.agentService.timeoutMs });
 
     const outcome = response.data;
@@ -185,6 +186,7 @@ async function handleMessage(message) {
         message_id: message.id.id,
         caption: text,
         chat_name: chatName,
+        sender: message.sender || '',
       }, { timeout: config.agentService.timeoutMs });
 
       const outcome = response.data;

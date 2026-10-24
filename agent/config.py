@@ -39,7 +39,13 @@ class Config:
     # feature flag in src/config/index.js.
     petpooja_orders_enabled: bool = os.getenv("PETPOOJA_ORDERS_ENABLED", "false").lower() == "true"
     petpooja_orders_whatsapp_group_name: str = os.getenv("PETPOOJA_ORDERS_WHATSAPP_GROUP_NAME", "")
-    petpooja_order_provider: str = os.getenv("PETPOOJA_ORDER_PROVIDER", "mock")
+    # 'dummy_api' (default): real HTTP round trip against our own local
+    # simulation of Petpooja's actual API shape — see dummy_petpooja_api.py.
+    # 'mock': pure in-process, no network, for unit tests. 'real': pending
+    # verified staging credentials (requirement 8).
+    petpooja_order_provider: str = os.getenv("PETPOOJA_ORDER_PROVIDER", "dummy_api")
+    petpooja_dummy_api_base_url: str = os.getenv("PETPOOJA_DUMMY_API_BASE_URL", "http://127.0.0.1:8000/dummy-petpooja")
+    petpooja_rest_id: str = os.getenv("PETPOOJA_REST_ID", "DUMMY-REST-ID")
 
     # petpooja_captain_orders lives in its OWN Supabase project — separate
     # from SUPABASE_URL above (which every other feature shares) — falls

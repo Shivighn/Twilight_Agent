@@ -26,8 +26,13 @@ registry.register(PetpoojaCaptainOrderTool())
 # ─────────────────────────────────────────────────────────────────────────────
 
 from agent.agent import run as agent_run
+from providers.dummy_petpooja_api import router as dummy_petpooja_router
 
 app = FastAPI(title="Agent AI", version="1.0.0")
+# Local stand-in for Petpooja's real /saveorder + /orderstatus (see
+# docs/PETPOOJA_CAPTAIN_ORDER_AUTOMATION.md) — see dummy_petpooja_api.py's
+# own docstring for why this is a real endpoint, not just an in-process stub.
+app.include_router(dummy_petpooja_router, prefix="/dummy-petpooja", tags=["dummy-petpooja"])
 
 # Logging setup
 logger.remove()
@@ -76,6 +81,7 @@ class ProcessRequest(BaseModel):
     message_id: str
     caption: str = ""
     chat_name: str = ""
+    sender: str = ""
 
 
 @app.post("/process")
@@ -88,6 +94,7 @@ async def process(req: ProcessRequest):
             message_id=req.message_id,
             caption=req.caption,
             chat_name=req.chat_name,
+            sender=req.sender,
         )
 
         # Broadcast to chat UI

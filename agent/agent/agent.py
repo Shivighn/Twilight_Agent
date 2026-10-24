@@ -30,7 +30,7 @@ Rules:
 - Do not add explanations — just make the tool call."""
 
 
-async def run(file_path: str, media_type: str, message_id: str, caption: str = "", chat_name: str = "") -> dict:
+async def run(file_path: str, media_type: str, message_id: str, caption: str = "", chat_name: str = "", sender: str = "") -> dict:
     logger.info(f"[Agent] Processing {media_type} — message_id: {message_id} — group: {chat_name}")
 
     context = {
@@ -39,6 +39,7 @@ async def run(file_path: str, media_type: str, message_id: str, caption: str = "
         "message_id": message_id,
         "caption": caption,
         "chat_name": chat_name,
+        "sender": sender,
     }
 
     if media_type == "image":
