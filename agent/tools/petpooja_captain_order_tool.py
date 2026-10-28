@@ -10,8 +10,9 @@ from datetime import datetime, timezone
 from loguru import logger
 
 from tools.base_tool import BaseTool
-from petpooja.llm_order_parser import parse_order_message
-from petpooja.menu_catalogue import load_catalogue, CatalogueUnavailableError
+from petpooja.simple_parser import try_simple_structure
+from petpooja.llm_structure_parser import structure_message
+from petpooja.menu_catalogue import load_catalogue, match_item, match_items_llm, CatalogueUnavailableError
 from providers.petpooja_order_provider import get_provider
 from config import config
 from petpooja import db
@@ -65,28 +66,25 @@ class PetpoojaCaptainOrderTool(BaseTool):
         row_id = claim.data[0]["id"]
         logger.info(f"[PetpoojaOrder] Claimed message {message_id} (row {row_id}) from '{chat_name}' <{sender}>: {text!r}")
 
-        # ── Load catalogue (needed before parsing — it goes in the LLM prompt) ──
-        try:
-            catalogue = load_catalogue()
-        except CatalogueUnavailableError as err:
-            logger.error(f"[PetpoojaOrder] {err}")
-            reply = "⚠️ Order received but the menu catalogue is unavailable right now — please enter this order manually. (Team has been notified.)"
-            await self._finish_needs_review(message_id, {}, [], f"catalogue unavailable: {err}", reply)
-            return {"reply": reply}
-
-        # ── Parse + menu-match in one LLM call ────────────────────────────
-        # No regex, no rule-based matching stage — a single free-LLM call
-        # (same NVIDIA/OpenRouter chain the petty-cash tool uses) reads the
-        # raw text plus the menu together and returns the fully structured,
-        # already-matched order. A malformed/failed LLM response is treated
-        # as needs_review, never guessed past.
-        try:
-            parsed = await parse_order_message(text, catalogue)
-        except Exception as err:
-            logger.warning(f"[PetpoojaOrder] {message_id}: LLM parse failed ({err})")
-            reply = "⚠️ Order received but could not be read automatically right now — please resend in a moment or enter it manually."
-            await self._finish_needs_review(message_id, {}, [], f"LLM parse failed: {err}", reply)
-            return {"reply": reply}
+        # ── Structure the message: local regex pass FIRST, LLM only as fallback ──
+        # Only ~33 menu items and a consistent message shape mean the fast
+        # local pass resolves almost every real message with zero network
+        # calls; it only returns None when it isn't confident (no bus number
+        # found, or an unrecognized line), at which point the LLM is given
+        # the message to use judgment on. A malformed/failed/slow LLM
+        # response (fallback path only) is treated as needs_review, never
+        # guessed past and never left hanging.
+        parsed = try_simple_structure(text)
+        if parsed is not None:
+            logger.info(f"[PetpoojaOrder] {message_id}: structured locally (no LLM call)")
+        else:
+            try:
+                parsed = await structure_message(text)
+            except Exception as err:
+                logger.warning(f"[PetpoojaOrder] {message_id}: structuring failed ({err})")
+                reply = "⚠️ Order received but could not be read automatically right now — please resend in a moment or enter it manually."
+                await self._finish_needs_review(message_id, {}, [], f"structuring failed: {err}", reply)
+                return {"reply": reply}
 
         if parsed["parse_failed"]:
             await db.update(
@@ -97,7 +95,32 @@ class PetpoojaCaptainOrderTool(BaseTool):
             logger.info(f"[PetpoojaOrder] {message_id}: no bus number found — not an order, ignoring silently")
             return {}
 
-        matched_items = parsed["items"]
+        # ── Load catalogue + match items ──────────────────────────────────
+        try:
+            catalogue = load_catalogue()
+        except CatalogueUnavailableError as err:
+            logger.error(f"[PetpoojaOrder] {err}")
+            reply = "⚠️ Order received but the menu catalogue is unavailable right now — please enter this order manually. (Team has been notified.)"
+            await self._finish_needs_review(message_id, parsed, [], f"catalogue unavailable: {err}", reply)
+            return {"reply": reply}
+
+        matched_items = [match_item(item["raw_name"], catalogue) for item in parsed["items"]]
+        for matched, original in zip(matched_items, parsed["items"]):
+            matched["quantity"] = original["quantity"]
+
+        # Only the lines the fast local pass couldn't resolve go to the LLM
+        # (most messages are spelled close enough to match exactly) — a
+        # failed/slow LLM response just keeps the rule-based unmatched/
+        # ambiguous result instead of risking a wrong order or hanging.
+        unresolved_idx = [i for i, m in enumerate(matched_items) if m["match_status"] != "matched"]
+        if unresolved_idx:
+            try:
+                llm_results = await match_items_llm([matched_items[i] for i in unresolved_idx], catalogue)
+                for idx, resolved in zip(unresolved_idx, llm_results):
+                    resolved["quantity"] = matched_items[idx]["quantity"]
+                    matched_items[idx] = resolved
+            except Exception as err:
+                logger.warning(f"[PetpoojaOrder] {message_id}: LLM item-match fallback failed ({err}) — keeping rule-based result")
 
         # ── Validate ─────────────────────────────────────────────────────
         # passenger_count is captured when mentioned but is NOT required —

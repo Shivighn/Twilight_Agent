@@ -1,19 +1,28 @@
 """
 LLM client dispatcher.
 
-Public functions (generate, generate_from_image, chat_with_tools) call the
-NVIDIA NIM free endpoints (nvidia_client.py), falling back to OpenRouter free
-models (openrouter_client.py) if the NVIDIA call fails.
+generate() tries Groq first (groq_client.py) — open models on fast
+inference hardware, typically well under 1s — falling back to the NVIDIA
+NIM free endpoints (nvidia_client.py) and then OpenRouter free models
+(openrouter_client.py) if earlier providers fail or aren't configured.
+generate_from_image/chat_with_tools stay NVIDIA-first since Groq isn't
+used for vision/tool-calling here.
 
 Tools import from this module — their code never changes when switching providers.
 """
 
 from loguru import logger
-from llm import nvidia_client, openrouter_client
+from config import config
+from llm import nvidia_client, openrouter_client, groq_client
 
 
 async def generate(prompt: str) -> str:
     """Plain text generation — used for PDF/text-based extraction."""
+    if config.groq_api_key:
+        try:
+            return await groq_client.generate(prompt)
+        except Exception as err:
+            logger.warning(f"[LLM] Groq generate failed ({err}) — falling back to NVIDIA")
     try:
         return await nvidia_client.generate(prompt)
     except Exception as err:

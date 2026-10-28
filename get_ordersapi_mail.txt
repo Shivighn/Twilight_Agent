@@ -1,0 +1,21 @@
+Hi Team,
+
+As per our call, we will provide the Sandbox Account for you to test the Online Ordering APIs.
+In the meantime I am adding the Get Orders API document here and production details here.
+
+curl --location 'https://api.petpooja.com/V1/thirdparty/generic_get_orders/' \
+--header 'Content-Type: application/json' \
+--header 'Cookie: PETPOOJA_API=eg3j5k6ofsl1lo06ud5204b0u2' \
+--data '{
+    "app_key": "uvw0th4nksi97o1bgqp35zjxr6e2may8",
+    "app_secret": "9450cbbbb22be056537e82138f1fa15220656e9b",
+    "access_token": "9949a4aea79acad2e22e501e89c5ff3146f15e48",
+    "restID": "qsawxp9tu4",
+    "order_date": "2026-10-25",
+    "refId": ""
+}'
+
+Please note that we have updated the HTTPS method to POST instead of GET as mentioned in the doc. Use the POST method going forward.
+
+Best Regards,
+Ajaysinh Solanki

@@ -113,7 +113,8 @@
         "paneer koora",
         "paneer curyr"
       ],
-      "price": 375
+      "price": 375,
+      "aka": "Paneer Curry"
     },
     {
       "itemid": "703",
@@ -170,7 +171,8 @@
         "mixed veg krma",
         "vvegetable kurma"
       ],
-      "price": 199
+      "price": 199,
+      "aka": "Mixed Vegetable Curry"
     },
     {
       "itemid": "704",
@@ -227,7 +229,8 @@
         "paneer bryiani",
         "paener biryani"
       ],
-      "price": 245
+      "price": 245,
+      "aka": "Paneer Biryani"
     },
     {
       "itemid": "705",
@@ -284,7 +287,8 @@
         "kaju chhicken pakodi",
         "kaju chicken ppakodi"
       ],
-      "price": 1
+      "price": 1,
+      "aka": "Chicken Cashew Pakora"
     },
     {
       "itemid": "706",
@@ -341,7 +345,8 @@
         "stuffed brinal curry",
         "eggplant kurry"
       ],
-      "price": 1
+      "price": 1,
+      "aka": "Stuffed Brinjal Curry"
     },
     {
       "itemid": "707",
@@ -626,7 +631,8 @@
         "tomato adl",
         "tomato dla curry"
       ],
-      "price": 1
+      "price": 1,
+      "aka": "Tomato Dal"
     },
     {
       "itemid": "712",
@@ -683,7 +689,8 @@
         "sorrel leavess dal",
         "gongura dl"
       ],
-      "price": 1
+      "price": 1,
+      "aka": "Sorrel Leaves Dal"
     },
     {
       "itemid": "713",
@@ -797,7 +804,8 @@
         "chickeen egg curry",
         "chicken eegg curry"
       ],
-      "price": 325
+      "price": 325,
+      "aka": "Egg Curry"
     },
     {
       "itemid": "715",
@@ -911,7 +919,8 @@
         "andhra cicken curry",
         "chicken curry konnaseema style"
       ],
-      "price": 1
+      "price": 1,
+      "aka": "Chicken Curry (Konaseema style)"
     },
     {
       "itemid": "717",
@@ -1196,7 +1205,8 @@
         "chicken biiyani",
         "chicken dum birynai"
       ],
-      "price": 345
+      "price": 345,
+      "aka": "Chicken Biryani"
     },
     {
       "itemid": "722",

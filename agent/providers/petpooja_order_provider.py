@@ -87,16 +87,37 @@ class DummyApiPetpoojaOrderProvider(PetpoojaOrderProvider):
 
 
 class RealPetpoojaOrderProvider(PetpoojaOrderProvider):
-    """Not implemented until real app_key/app_secret/access_token and a
-    verified staging test against Petpooja's actual servers are all in hand
-    (requirement 8). Raises loudly rather than silently falling back to the
-    dummy."""
+    """Calls Petpooja's actual save_order endpoint — staging today,
+    production later. Staging vs. production is meant to be exactly a
+    config change (PETPOOJA_APP_KEY/APP_SECRET/ACCESS_TOKEN/REST_ID and,
+    if Petpooja says it differs, PETPOOJA_SAVE_ORDER_URL) — this class
+    itself never needs to change between the two."""
+
+    def __init__(self):
+        self.base_url = config.petpooja_save_order_url
+        self.rest_id = config.petpooja_rest_id
+        self.app_key = config.petpooja_app_key
+        self.app_secret = config.petpooja_app_secret
+        self.access_token = config.petpooja_access_token
 
     async def create_order(self, order: dict) -> dict:
-        raise NotImplementedError("Real Petpooja integration pending verified staging credentials")
+        payload = build_save_order_payload(order, rest_id=self.rest_id, callback_url=config.petpooja_callback_url)
+        payload["app_key"] = self.app_key
+        payload["app_secret"] = self.app_secret
+        payload["access_token"] = self.access_token
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(self.base_url, json=payload)
+            body = resp.json()
+
+        if body.get("success") != "1":
+            raise RuntimeError(f"Petpooja save_order rejected: {body.get('message')} ({body.get('errorCode')}) {body.get('validation_errors')}")
+
+        logger.info(f"[PetpoojaReal] create_order -> petpooja orderID {body.get('orderID')} (client {body.get('clientOrderID')})")
+        return {"order_id": body.get("orderID"), "raw_response": body}
 
     async def get_order_status(self, order_row: dict) -> dict | None:
-        raise NotImplementedError("Real Petpooja integration pending verified staging credentials")
+        # See the ABC docstring above — the real API has no such endpoint.
+        return None
 
 
 def get_provider(provider_mode: str) -> PetpoojaOrderProvider:

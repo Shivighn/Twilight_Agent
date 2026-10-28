@@ -1,0 +1,68 @@
+{
+  "app_key": "my2vsg0dn5ao6f7hxzciqekr1j3b8wtu",
+  "app_secret": "f941d6bbffb2f4ba8270cbccda5f9c0850b22075",
+  "access_token": "7e6edcf032bd46436750800346cfe1b6e96a113f",
+  "orderinfo": {
+    "OrderInfo": {
+      "Restaurant": {
+        "details": {
+          "res_name": "Twilight T44 Captain Orders",
+          "restID": "js51a42pb3"
+        }
+      },
+      "Customer": {
+        "details": {
+          "name": "Vehicle AP39UX9999",
+          "phone": "0000000000",
+          "address": "Terminal 44, Hyderabad"
+        }
+      },
+      "Order": {
+        "details": {
+          "orderID": "postman-manual-test-1",
+          "preorder_date": "2026-10-27",
+          "preorder_time": "12:00:00",
+          "advanced_order": "N",
+          "service_charge": "0",
+          "sc_tax_amount": "0",
+          "dc_tax_percentage": "0",
+          "dc_tax_amount": "0",
+          "pc_tax_amount": "0",
+          "pc_tax_percentage": "0",
+          "order_type": "D",
+          "payment_type": "COD",
+          "enable_delivery": "0",
+          "no_of_persons": "2",
+          "discount_total": "0",
+          "discount_type": "F",
+          "tax_total": "0",
+          "total": "395.00",
+          "description": "Manual Postman test",
+          "created_on": "2026-10-27 12:00:00",
+          "callback_url": "https://example.com/callback"
+        }
+      },
+      "OrderItem": {
+        "details": [
+          {
+            "id": "701",
+            "name": "Chicken Curry (d)",
+            "item_tax": [],
+            "item_discount": "0",
+            "price": "395.00",
+            "final_price": "395.00",
+            "quantity": "1",
+            "tax_inclusive": false,
+            "gst_liability": "restaurant",
+            "variation_name": "",
+            "variation_id": ""
+          }
+        ]
+      },
+      "Tax": { "details": [] },
+      "Discount": { "details": [] }
+    }
+  },
+  "udid": "",
+  "device_type": "Web"
+}
