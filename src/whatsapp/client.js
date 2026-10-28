@@ -9,7 +9,11 @@ const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 const logger = require('../utils/logger');
 
-const AUTH_DIR = './baileys_auth';
+// Overridable so a local test session (a different phone/number) can use
+// its own folder (e.g. WHATSAPP_AUTH_DIR=./baileys_auth_test) without ever
+// touching the real session's ./baileys_auth — keeps the real one safe to
+// carry over to the VPS later instead of repeatedly relinking it.
+const AUTH_DIR = process.env.WHATSAPP_AUTH_DIR || './baileys_auth';
 
 // Baileys' internal logging is very chatty — keep it silent, we log ourselves.
 const waLogger = pino({ level: 'silent' });

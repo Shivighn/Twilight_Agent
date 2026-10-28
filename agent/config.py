@@ -26,10 +26,10 @@ class Config:
     openrouter_chat_model: str = os.getenv("OPENROUTER_CHAT_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free")
     openrouter_timeout: int = int(os.getenv("OPENROUTER_TIMEOUT_MS", "90000")) // 1000
 
-    groq_api_key: str = os.getenv("GROQ_API_KEY", "")
-    groq_base_url: str = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-    groq_chat_model: str = os.getenv("GROQ_CHAT_MODEL", "openai/gpt-oss-20b")
-    groq_timeout: int = int(os.getenv("GROQ_TIMEOUT_MS", "30000")) // 1000
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    gemini_base_url: str = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
+    gemini_chat_model: str = os.getenv("GEMINI_CHAT_MODEL", "gemini-flash-latest")
+    gemini_timeout: int = int(os.getenv("GEMINI_TIMEOUT_MS", "30000")) // 1000
 
     storage_dir: str = os.getenv("STORAGE_DIR", "./storage")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")

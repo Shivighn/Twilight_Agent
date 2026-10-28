@@ -1,33 +1,24 @@
 """
 LLM client dispatcher.
 
-generate() tries Groq first (groq_client.py) — open models on fast
-inference hardware, typically well under 1s — falling back to the NVIDIA
-NIM free endpoints (nvidia_client.py) and then OpenRouter free models
-(openrouter_client.py) if earlier providers fail or aren't configured.
-generate_from_image/chat_with_tools stay NVIDIA-first since Groq isn't
-used for vision/tool-calling here.
+generate() uses Gemini (gemini_client.py) only — no Groq/NVIDIA/OpenRouter
+fallback for plain text generation; a Gemini failure is a real failure the
+caller should handle (e.g. needs_review), not something to silently paper
+over with a weaker free model. generate_from_image/chat_with_tools stay
+NVIDIA-first since Gemini isn't used for vision/tool-calling here.
 
 Tools import from this module — their code never changes when switching providers.
 """
 
-from loguru import logger
 from config import config
-from llm import nvidia_client, openrouter_client, groq_client
+from llm import nvidia_client, openrouter_client, gemini_client
 
 
 async def generate(prompt: str) -> str:
     """Plain text generation — used for PDF/text-based extraction."""
-    if config.groq_api_key:
-        try:
-            return await groq_client.generate(prompt)
-        except Exception as err:
-            logger.warning(f"[LLM] Groq generate failed ({err}) — falling back to NVIDIA")
-    try:
-        return await nvidia_client.generate(prompt)
-    except Exception as err:
-        logger.warning(f"[LLM] NVIDIA generate failed ({err}) — falling back to OpenRouter")
-    return await openrouter_client.generate(prompt)
+    if not config.gemini_api_key:
+        raise EnvironmentError("GEMINI_API_KEY is not set in .env")
+    return await gemini_client.generate(prompt)
 
 
 async def generate_from_image(prompt: str, image_path: str) -> str:

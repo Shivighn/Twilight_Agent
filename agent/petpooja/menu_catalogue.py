@@ -240,7 +240,7 @@ async def match_items_llm(unresolved: list[dict], catalogue: list[dict]) -> list
     for the LLM — its job here is exactly the fuzzy spelling judgment
     those aliases were a rule-based stand-in for, and the full alias list
     is large enough (~30KB) to blow past some free providers' per-request
-    payload limits (seen: Groq 413) for no matching-quality benefit.
+    payload limits for no matching-quality benefit.
     `aka` (menu_catalogue.json) is a SEPARATE, hand-curated plain-English
     descriptor for items whose real name is a regional-language dish name
     an LLM has no lexical way to connect to a driver's English guess —

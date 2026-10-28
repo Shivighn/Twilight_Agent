@@ -1,0 +1,142 @@
+Name *	Short Code*	Online Display Name	Price *	Description	Image	Actions
+Chicken Curry (d)
+
+701
+395
+Panner Curry(d)
+
+702
+375
+Mixed Vegetable Curru (d)
+
+703
+199
+Panner Briyanai (d)
+
+704
+245
+Kaju Kodi Pakodi (D)
+
+705
+1
+Gutthi Vanakaya Kura (D)
+
+706
+1
+Paneer Matar Masala (D)
+
+707
+1
+Kadhai Veg (d)
+
+708
+345
+Kadhai Paneer (d)
+
+709
+375
+Dal Fry (d)
+
+710
+275
+Tomato Pappu (D)
+
+711
+1
+Gongura Pappu (D)
+
+712
+1
+Palak Dal (D)
+
+713
+1
+Kodi Guddu Iguru (d)
+
+714
+325
+Chettinadu Egg Fry (d)
+
+715
+245
+Konaseema Kodi Kura (D)
+
+716
+1
+Plain Rice (d)
+
+717
+125
+Jeera Rice (D)
+
+718
+215
+Biryani Rice (d)
+
+719
+195
+Veg Biryani (D)
+
+720
+245
+Chicken Dum Biryani Plate (d)
+
+721
+345
+Curd Rice (d)
+
+722
+145
+Ghee Sambhar Rice (D)
+
+723
+1
+Tandoori Roti (D)
+
+724
+60
+Butter Roti (D)
+
+725
+70
+Plain Naan (D)
+
+726
+60
+Butter Naan (D)
+
+727
+70
+Garlic Naan (D)
+
+728
+1
+Tea (D)
+
+729
+1
+Masala Tea (D)
+
+730
+1
+Ginger Tea (D)
+
+731
+1
+Elaichi Tea (D)
+
+732
+1
+Lemon Tea (D)
+
+733
+1
+Filter Coffee (D)
+
+734
+1
+
+
+
+
+
