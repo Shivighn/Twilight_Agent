@@ -48,10 +48,14 @@ class _Result:
         self.data = data
 
 
-async def query(table: str, filters: dict = None, select: str = "*") -> _Result:
+async def query(table: str, filters: dict = None, select: str = "*", order: str = None, limit: int = None) -> _Result:
     params = {"select": select}
     for col, val in (filters or {}).items():
         params[col] = f"eq.{val}"
+    if order:
+        params["order"] = order
+    if limit:
+        params["limit"] = str(limit)
     async with _client() as client:
         r = await client.get(f"{_BASE}/{table}", headers=_HEADERS, params=params)
         r.raise_for_status()

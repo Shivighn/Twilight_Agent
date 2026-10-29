@@ -1,0 +1,14 @@
+Subject: Re: SIVAPURNA MOBILITY SERVICES LLP [457540] — Sandbox Test Results & Production Credentials
+
+Hi Ajay,
+
+Thanks for the sandbox access and the detailed test scenario list. Here's where we stand:
+
+We've successfully placed and fulfilled multiple live orders through the sandbox using mapping code js51a42pb3. A few example order IDs from the sandbox dashboard:
+- 3A75B9D94D18490BC223 — Vehicle KA01TA0668
+- 3EB0EDE2CF8FFFC2BB2DC2 — Vehicle KA01TA0008
+
+We'd like to move toward production credentials.
+
+Best regards,
+44 Food Terminal

@@ -5,6 +5,7 @@ implements. Dispatched directly from agent/agent/agent.py's run() for the
 configured WhatsApp group (never through LLM tool-selection), so `params`
 is always {} in practice — kept for BaseTool interface compatibility.
 """
+import re
 from datetime import datetime, timezone
 
 from loguru import logger
@@ -18,6 +19,9 @@ from config import config
 from petpooja import db
 
 TABLE = "petpooja_captain_orders"
+
+# "cancel 12345", "Cancel order 12345", "cancel order id: 12345", "CANCEL #12345"
+_CANCEL_RE = re.compile(r"^\s*cancel\b\s*(?:order\s*)?(?:id\s*)?[:#]?\s*(\S+)\s*$", re.IGNORECASE)
 
 
 class PetpoojaCaptainOrderTool(BaseTool):
@@ -36,6 +40,14 @@ class PetpoojaCaptainOrderTool(BaseTool):
         chat_name = context.get("chat_name", "")
         sender = context.get("sender", "")
         text = context.get("text", "") or context.get("caption", "")
+
+        # ── Cancel command — handled entirely separately from order parsing ──
+        # Checked before the idempotency claim below: a cancel message isn't
+        # itself an order and must never be inserted into this table as one.
+        cancel_match = _CANCEL_RE.match(text)
+        if cancel_match:
+            reply = await self._handle_cancel(cancel_match.group(1))
+            return {"reply": reply}
 
         # ── Idempotency claim ────────────────────────────────────────────
         # A redelivered message (reconnect, or a retry after the process
@@ -158,8 +170,15 @@ class PetpoojaCaptainOrderTool(BaseTool):
         now = datetime.now(timezone.utc).isoformat()
         try:
             result = await provider.create_order(order)
-            item_summary = ", ".join(f"{m['quantity']} {m['matched_item_name']}" for m in matched_items)
-            reply = f"✅ Order sent to kitchen for *{parsed['bus_number']}* — {item_summary}"
+            order_no = await self._next_order_no()
+            item_lines = "\n".join(f"* {m['quantity']} x {m['matched_item_name']}" for m in matched_items)
+            reply = (
+                f"✅ Order sent to kitchen\n"
+                f"Bus: {parsed['bus_number']}\n\n"
+                f"{item_lines}\n\n"
+                f"Order ID: {order_no}\n"
+                f"To cancel, reply: cancel {order_no}"
+            )
             await db.update(
                 TABLE,
                 {"whatsapp_message_id": f"eq.{message_id}"},
@@ -169,6 +188,7 @@ class PetpoojaCaptainOrderTool(BaseTool):
                     "order_items": matched_items,
                     "parsing_status": "parsed",
                     "petpooja_status": "created",
+                    "order_no": order_no,
                     "petpooja_order_id": result["order_id"],
                     "petpooja_response": result["raw_response"],
                     "reply_sent": reply,
@@ -176,7 +196,7 @@ class PetpoojaCaptainOrderTool(BaseTool):
                     "updated_at": now,
                 },
             )
-            logger.info(f"[PetpoojaOrder] {message_id}: created -> {result['order_id']}")
+            logger.info(f"[PetpoojaOrder] {message_id}: created -> order_no {order_no} (petpooja {result['order_id']})")
             return {"reply": reply}
         except Exception as err:
             reply = f"⏳ Order for *{parsed['bus_number']}* received — kitchen system is slow to respond, retrying automatically."
@@ -203,6 +223,40 @@ class PetpoojaCaptainOrderTool(BaseTool):
             )
             logger.warning(f"[PetpoojaOrder] {message_id}: create_order failed — {err}")
             return {"reply": reply}
+
+    @staticmethod
+    async def _next_order_no() -> int:
+        """Sequential, driver-facing order number — starts at 1, assigned
+        only here (order creation), so chit-chat/needs_review rows in this
+        table never consume one. Small race window between this read and
+        the caller's write is acceptable at this order volume (one bus
+        captain's message at a time, not concurrent checkout traffic)."""
+        last = await db.query(TABLE, select="order_no", order="order_no.desc.nullslast", limit=1)
+        current_max = last.data[0]["order_no"] if last.data and last.data[0].get("order_no") else 0
+        return current_max + 1
+
+    @staticmethod
+    async def _handle_cancel(order_no: str) -> str:
+        """Marks an order 'cancelled' in our own records — this is
+        bookkeeping only. Petpooja's real API has no remote cancel/void
+        endpoint (push-only for order creation), so the kitchen ticket
+        itself is never touched; whoever cancels must also tell kitchen
+        staff directly, since preparation may already be underway."""
+        existing = await db.query(TABLE, filters={"order_no": order_no})
+        if not existing.data:
+            return f"⚠️ No order found with ID {order_no}. Please check the order ID and resend."
+
+        row = existing.data[0]
+        if row.get("petpooja_status") == "cancelled":
+            return f"Order id: {order_no}\n{row.get('bus_number')}\nAlready cancelled"
+
+        await db.update(
+            TABLE,
+            {"order_no": f"eq.{order_no}"},
+            {"petpooja_status": "cancelled", "updated_at": datetime.now(timezone.utc).isoformat()},
+        )
+        logger.info(f"[PetpoojaOrder] order_no {order_no}: marked cancelled")
+        return f"Order id: {order_no}\n{row.get('bus_number')}\nCancelled"
 
     @staticmethod
     async def _finish_needs_review(message_id, parsed, matched_items, validation_notes, reply):
