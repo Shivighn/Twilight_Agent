@@ -163,22 +163,29 @@ also-known-as for a menu item whose real name is a regional-language dish name, 
 name has no spelling resemblance to what a driver might type for the same dish:
 {menu_lines}
 
-Drivers misspell or guess phonetically, e.g. "chckn biryni", "chickn bryani" both mean "Chicken Biryani" —
-match on the misspelled WORDS, not loosely on topic.
+Drivers misspell or guess phonetically, e.g. "chckn biryni", "chickn bryani" both mean "Chicken Biryani",
+"Butter Non" means "Butter Naan", "Paneer Curri" means "Paneer Curry" — match on the misspelled WORDS,
+not loosely on topic.
 
 ITEMS TO MATCH, in order:
 {item_lines}
 
 Rules:
-- If a raw name clearly means exactly one menu item (even badly misspelled), match it.
+- A raw name that is a near-identical spelling of exactly one menu item's name or aka — missing a
+  letter, an extra/swapped letter, a dropped final vowel, a phonetic respelling — IS that item. Match
+  it confidently; being 1-2 letters off from an otherwise unambiguous name is NOT grounds for
+  "unmatched". Reserve "unmatched" for when the DISH ITSELF isn't on the menu, never for imperfect
+  spelling of a dish that clearly is.
 - Match the actual DISH TYPE the raw text names — curry, fry, biryani, and rice are different
   preparations even when they share an ingredient word (e.g. "chicken fried rice" and "chicken biryani"
   both contain "chicken" but are NOT the same dish; "egg curry" and "egg fry" both contain "egg" but are
   NOT the same dish). Never match on a shared ingredient word alone while ignoring a clearly different
   preparation word.
-- If a raw name names a dish/preparation that genuinely isn't on this menu at all, match_status is
-  "unmatched" and matched_item_id is null. It is correct and expected for some items to be unmatched —
-  never force the closest-sounding menu item just to avoid returning unmatched.
+- If a raw name names a dish/preparation that genuinely isn't on this menu at all (not just spelled
+  unusually, but actually absent — e.g. "fried rice" when no fried rice exists on the menu), match_status
+  is "unmatched" and matched_item_id is null. Never force the closest-sounding menu item onto a
+  genuinely different dish just to avoid returning unmatched — but don't use "unmatched" as a shortcut
+  for "I'm not 100% sure of the spelling" either.
 - If a raw name could plausibly mean more than one distinct menu item, match_status is "ambiguous" and "candidates" lists those item ids.
 - matched_item_id must be exactly one of the ids listed in MENU above, or null.
 
@@ -263,7 +270,12 @@ async def match_items_llm(unresolved: list[dict], catalogue: list[dict]) -> list
     resolved = []
     for original, result in zip(unresolved, results):
         status = result.get("match_status")
+        # Catalogue itemids are strings, but the LLM's JSON often writes
+        # matched_item_id as a bare number (e.g. 702, not "702") — compare
+        # as strings or a correct match silently falls through to unmatched.
         item_id = result.get("matched_item_id")
+        if item_id is not None:
+            item_id = str(item_id)
         if status == "matched" and item_id in by_id:
             item = by_id[item_id]
             resolved.append({
@@ -275,7 +287,8 @@ async def match_items_llm(unresolved: list[dict], catalogue: list[dict]) -> list
                 "match_confidence": 0.85,
             })
         elif status == "ambiguous":
-            candidate_names = [by_id[c]["name"] for c in (result.get("candidates") or []) if c in by_id]
+            candidate_ids = [str(c) for c in (result.get("candidates") or [])]
+            candidate_names = [by_id[c]["name"] for c in candidate_ids if c in by_id]
             resolved.append({
                 "raw_name": original["raw_name"],
                 "matched_item_id": None,
