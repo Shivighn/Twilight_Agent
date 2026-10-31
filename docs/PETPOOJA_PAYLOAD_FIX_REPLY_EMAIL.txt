@@ -1,0 +1,102 @@
+Subject: Re: SIVAPURNA MOBILITY SERVICES LLP [457540] — Sandbox Test Results & Production Credentials
+
+Hi Ajay,
+
+Thanks for the sample payload — we compared it against ours and added the fields we were missing. Here's our updated payload (comments mark what we added):
+
+{
+    "app_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "app_secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "access_token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "orderinfo": {
+        "OrderInfo": {
+            "Restaurant": {
+                "details": {
+                    "res_name": "Twilight T44 Captain Orders",
+                    "restID": "js51a42pb3",
+                    "contact_information": ""  // ADDED
+                }
+            },
+            "Customer": {
+                "details": {
+                    "name": "Vehicle KA01TA0099",
+                    "phone": "0000000000",
+                    "email": "",  // ADDED
+                    "address": "Terminal 44, Hyderabad",
+                    "latitude": "0",  // ADDED
+                    "longitude": "0"  // ADDED
+                }
+            },
+            "Order": {
+                "details": {
+                    "orderID": "3A75B9D94D18490BC223",
+                    "preorder_date": "2026-10-30",
+                    "preorder_time": "15:20:00",
+                    "advanced_order": "N",
+                    "service_charge": "0",
+                    "sc_tax_amount": "0",
+                    "dc_tax_percentage": "0",
+                    "dc_tax_amount": "0",
+                    "pc_tax_amount": "0",
+                    "pc_tax_percentage": "0",
+                    "order_type": "D",
+                    "payment_type": "COD",
+                    "enable_delivery": "0",
+                    "no_of_persons": "1",
+                    "discount_total": "0",
+                    "discount_type": "F",
+                    "tax_total": "0",
+                    "total": "560.00",
+                    "description": "Captain order via WhatsApp — message 3A75B9D94D18490BC223",
+                    "created_on": "2026-10-30 15:20:00",
+                    "callback_url": ""
+                }
+            },
+            "OrderItem": {
+                "details": [
+                    {
+                        "id": "721",
+                        "name": "Chicken Dum Biryani Plate",
+                        "item_tax": [],
+                        "item_discount": "0",
+                        "price": "245.00",
+                        "final_price": "490.00",
+                        "quantity": "2",
+                        "description": "",  // ADDED
+                        "tax_inclusive": false,
+                        "gst_liability": "restaurant",
+                        "variation_name": "",
+                        "variation_id": "",
+                        "AddonItem": {"details": []}  // ADDED — was missing entirely before
+                    },
+                    {
+                        "id": "727",
+                        "name": "Butter Naan",
+                        "item_tax": [],
+                        "item_discount": "0",
+                        "price": "70.00",
+                        "final_price": "70.00",
+                        "quantity": "1",
+                        "description": "",  // ADDED
+                        "tax_inclusive": false,
+                        "gst_liability": "restaurant",
+                        "variation_name": "",
+                        "variation_id": "",
+                        "AddonItem": {"details": []}  // ADDED
+                    }
+                ]
+            },
+            "Tax": {"details": []},
+            "Discount": {"details": []}
+        }
+    },
+    "udid": "",
+    "device_type": "Web"
+}
+
+We've re-tested with these fields added and orders are still being saved successfully (success: 1, "Your order is saved.").
+
+Could you review this and confirm if it's correct? If so, we'd like to go ahead with production credentials.
+
+Best regards,
+44 Food Terminal

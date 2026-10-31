@@ -4,6 +4,7 @@ docs/PETPOOJA_CAPTAIN_ORDER_AUTOMATION.md section 6. The tool only ever
 calls this interface, never branches on provider type, so swapping
 dummy_api -> real later changes zero business logic.
 """
+import json
 import random
 import string
 from abc import ABC, abstractmethod
@@ -105,6 +106,13 @@ class RealPetpoojaOrderProvider(PetpoojaOrderProvider):
         payload["app_key"] = self.app_key
         payload["app_secret"] = self.app_secret
         payload["access_token"] = self.access_token
+
+        # Credentials redacted — this is the exact wire payload otherwise,
+        # logged so it can be copy-pasted (e.g. into a vendor email) without
+        # having to reconstruct it from build_save_order_payload's code.
+        redacted = {**payload, "app_key": "***", "app_secret": "***", "access_token": "***"}
+        logger.info(f"[PetpoojaReal] create_order payload: {json.dumps(redacted, indent=2)}")
+
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(self.base_url, json=payload)
             body = resp.json()

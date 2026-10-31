@@ -1,0 +1,80 @@
+create_order payload: {
+  "orderinfo": {
+    "OrderInfo": {
+      "Restaurant": {
+        "details": {
+          "res_name": "Twilight T44 Captain Orders",
+          "restID": "js51a42pb3",
+          "contact_information": ""
+        }
+      },
+      "Customer": {
+        "details": {
+          "name": "Vehicle TEST8401",
+          "phone": "0000000000",
+          "email": "",
+          "address": "Terminal 44, Hyderabad",
+          "latitude": "0",
+          "longitude": "0"
+        }
+      },
+      "Order": {
+        "details": {
+          "orderID": "3A25F6V6SDF666VS51",
+          "preorder_date": "2026-10-30",
+          "preorder_time": "10:05:39",
+          "advanced_order": "N",
+          "service_charge": "0",
+          "sc_tax_amount": "0",
+          "dc_tax_percentage": "0",
+          "dc_tax_amount": "0",
+          "pc_tax_amount": "0",
+          "pc_tax_percentage": "0",
+          "order_type": "D",
+          "payment_type": "COD",
+          "enable_delivery": "0",
+          "no_of_persons": "6",
+          "discount_total": "0",
+          "discount_type": "F",
+          "tax_total": "0",
+          "total": "490.00",
+          "description": "Captain order via WhatsApp \u2014 message 3A25F6V6SDF666VS51",
+          "created_on": "2026-10-30 10:05:39",
+          "callback_url": ""
+        }
+      },
+      "OrderItem": {
+        "details": [
+          {
+            "id": "821",
+            "name": "Chicken Dum Biryani Plate",
+            "item_tax": [],
+            "item_discount": "0",
+            "price": "245.00",
+            "final_price": "490.00",
+            "quantity": "2",
+            "description": "",
+            "tax_inclusive": false,
+            "gst_liability": "restaurant",
+            "variation_name": "",
+            "variation_id": "",
+            "AddonItem": {
+              "details": []
+            }
+          }
+        ]
+      },
+      "Tax": {
+        "details": []
+      },
+      "Discount": {
+        "details": []
+      }
+    }
+  },
+  "udid": "",
+  "device_type": "Web",
+  "app_key": "***",
+  "app_secret": "***",
+  "access_token": "***"
+}

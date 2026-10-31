@@ -47,6 +47,7 @@ def build_save_order_payload(order: dict, rest_id: str, callback_url: str = "") 
             "price": f"{unit_price:.2f}",
             "final_price": f"{unit_price * quantity:.2f}",
             "quantity": str(quantity),
+            "description": "",
             # Required per the later field-reference guide, missing from
             # the first draft: prices here exclude tax (tax_total is "0"
             # below — no tax master configured), and this is an internal
@@ -55,6 +56,7 @@ def build_save_order_payload(order: dict, rest_id: str, callback_url: str = "") 
             "gst_liability": "restaurant",
             "variation_name": "",
             "variation_id": "",
+            "AddonItem": {"details": []},
         })
 
     order_total = sum(float(i["final_price"]) for i in order_items)
@@ -66,17 +68,21 @@ def build_save_order_payload(order: dict, rest_id: str, callback_url: str = "") 
                     "details": {
                         "res_name": "Twilight T44 Captain Orders",
                         "restID": rest_id,
+                        "contact_information": "",  # not collected — no real restaurant contact in a Captain-order message
                     }
                 },
                 "Customer": {
                     "details": {
                         "name": f"Vehicle {order['bus_number']}",
                         "phone": "0000000000",  # no real customer phone in a Captain-order message
+                        "email": "",  # not collected
                         # Required per the later field-reference guide, missing from
                         # the first draft — this is a Dine-in/pickup order at the
                         # restaurant itself, not a delivery, so the restaurant's own
                         # location stands in for a real customer address.
                         "address": "Terminal 44, Hyderabad",
+                        "latitude": "0",  # dine-in at the restaurant itself — no real customer geo-location
+                        "longitude": "0",
                     }
                 },
                 "Order": {

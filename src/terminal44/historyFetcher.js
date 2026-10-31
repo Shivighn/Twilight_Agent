@@ -28,6 +28,24 @@ function windowForDate(dateStr) {
   return { fromUTC: dayMidnightIST + 4 * HOUR_MS, toUTC: dayMidnightIST + DAY_MS + 4 * HOUR_MS };
 }
 
+// Ground staff sometimes key in the same vehicle twice for the same day
+// (double entry, not a real second trip) — collapse to one row per vehicle
+// per report, keeping whichever occurrence the API returned first. Plate
+// normalization mirrors csvBuilder.js's formatVehicleNumber (strip spaces/
+// dashes, uppercase) so "KA01TA0668" and "ka 01 ta 0668" are recognized as
+// the same vehicle even if ground staff typed them differently.
+function dedupeByVehicle(rows) {
+  const seen = new Set();
+  const deduped = [];
+  for (const row of rows) {
+    const key = (row.bus_number || '').replace(/[\s-]/g, '').toUpperCase();
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    deduped.push(row);
+  }
+  return deduped;
+}
+
 /**
  * Fetch a day's (IST) Terminal 44 history and filter to departed rows for
  * one operator (`operatorFilter`, default IntrCity — the original report).
@@ -68,13 +86,17 @@ async function fetchDepartedHistory(dateStr, operatorFilter = OPERATOR_FILTER) {
     return t >= fromUTC && t < toUTC;
   });
 
+  const deduped = dedupeByVehicle(filtered);
+
   logger.info(
     `[Terminal44] Fetched ${data.rows.length} row(s) for ${dateStr} (from=${data.from}, to=${data.to}) — ` +
       `${departed.length} departed, ${matched.length} matching "${operatorFilter}", ` +
-      `${filtered.length} within [04:00, next-day 04:00) window`
+      `${filtered.length} within [04:00, next-day 04:00) window, ` +
+      `${deduped.length} after removing duplicate vehicle entries` +
+      (deduped.length < filtered.length ? ` (${filtered.length - deduped.length} duplicate(s) dropped)` : '')
   );
 
-  return filtered;
+  return deduped;
 }
 
 module.exports = { fetchDepartedHistory };
